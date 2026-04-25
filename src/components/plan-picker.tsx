@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { PLAN_CATALOG, type PlanId } from "@/lib/plans";
 import { PrimaryButton } from "@/components/primary-button";
 import { GlassCard } from "@/components/glass-card";
@@ -10,22 +9,30 @@ import { LogoutButton } from "@/components/logout-button";
 const planIds = Object.keys(PLAN_CATALOG) as PlanId[];
 
 export function PlanPicker({ current }: { current: PlanId }) {
-  const router = useRouter();
   const [status, setStatus] = useState<string | null>(null);
+  const [loadingPlan, setLoadingPlan] = useState<PlanId | null>(null);
 
   async function choose(plan: PlanId) {
+    setLoadingPlan(plan);
     setStatus(null);
-    const res = await fetch("/api/plan", {
+    const res = await fetch("/api/stripe/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ plan }),
     });
     if (!res.ok) {
-      setStatus("Não foi possível atualizar o plano.");
+      const data = await res.json().catch(() => ({}));
+      setStatus(data.error ?? "Não foi possível iniciar o checkout.");
+      setLoadingPlan(null);
       return;
     }
-    setStatus("Plano atualizado com sucesso.");
-    router.refresh();
+    const data = (await res.json()) as { url?: string };
+    if (!data.url) {
+      setStatus("Sessão de checkout inválida.");
+      setLoadingPlan(null);
+      return;
+    }
+    window.location.assign(data.url);
   }
 
   return (
@@ -51,10 +58,10 @@ export function PlanPicker({ current }: { current: PlanId }) {
               type="button"
               className="mt-4 w-full"
               variant={active ? "ghost" : "green"}
-              disabled={active}
+              disabled={active || loadingPlan !== null}
               onClick={() => void choose(id)}
             >
-              {active ? "Atual" : "Ativar plano"}
+              {active ? "Atual" : loadingPlan === id ? "A abrir checkout..." : "Ativar plano"}
             </PrimaryButton>
           </GlassCard>
         );

@@ -174,6 +174,14 @@ function phaseForDay(day: number) {
   return FLOW.find((f) => day >= f.gelStart && day <= f.gelEnd) ?? FLOW[0];
 }
 
+function nextPhaseForDay(day: number) {
+  const current = phaseForDay(day);
+  const currentPhaseStart = current.phaseStart;
+  const phaseStarts = Array.from(new Set(FLOW.map((f) => f.phaseStart))).sort((a, b) => a - b);
+  const nextPhaseStart = phaseStarts.find((s) => s > currentPhaseStart) ?? phaseStarts[0];
+  return FLOW.find((f) => f.phaseStart === nextPhaseStart) ?? FLOW[0];
+}
+
 function readDailyState(): DailyState {
   if (typeof window === "undefined") return { completedDays: 0, lastDoneYmd: null };
   const raw = window.localStorage.getItem(DAILY_KEY);
@@ -210,7 +218,7 @@ export function ProtocoloHub({ accessPlan }: Props) {
   const cycleIndex = Math.floor(daily.completedDays / 15);
   const cycleName = CYCLE_NAMES[cycleIndex % CYCLE_NAMES.length];
   const todayFlow = phaseForDay(currentDay);
-  const nextFlow = phaseForDay(currentDay === 15 ? 1 : currentDay + 1);
+  const nextFlow = nextPhaseForDay(currentDay);
   const dayInPhase = currentDay - todayFlow.phaseStart + 1;
   const phaseDays = todayFlow.phaseEnd - todayFlow.phaseStart + 1;
   const daysLeftInPhase = Math.max(0, phaseDays - dayInPhase);

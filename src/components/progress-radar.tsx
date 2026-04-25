@@ -193,19 +193,14 @@ export function ProgressRadar({
   const mixedStress = pulse?.stress ?? Math.max(0, Math.min(5, Math.round((mixedSleep + mixedEnergy) / 2) - Math.round(mixedBloating / 2)));
 
   const metrics = useMemo<RadarMetric[]>(() => {
-    // Peso no radar representa "prioridade/problema", não progresso conquistado.
-    // Ex.: 0% progresso => 5/5 (prioridade alta); 100% => 0/5 (prioridade baixa).
-    const weightScore = weightKg == null ? 2.5 : Math.max(0, Math.min(5, 5 - pct / 20));
-    // Eixos "positivos": maior score = melhor estado geral.
-    const hungerControl = 5 - mixedHunger;
-    const bloatingControl = 5 - mixedBloating;
-    const stressControl = Math.max(0, Math.min(5, 5 - mixedStress + Math.min(1, chatCountToday * 0.15)));
-    const weightAdjusted = mainProblem === "fome-descontrolada" ? Math.min(5, weightScore + 0.2) : weightScore;
-    const energyProblemCurrent = 5 - Math.min(5, mixedEnergy + hydrationBonus * 0.4);
-    const sleepProblemCurrent = 5 - mixedSleep;
-    const bloatingProblemCurrent = bloatingControl;
-    const hungerProblemCurrent = hungerControl;
-    const stressProblemCurrent = stressControl;
+    // Centro = saúde perfeita (0). Quanto mais para fora, pior (até 5).
+    const weightProblem = weightKg == null ? 2.5 : Math.max(0, Math.min(5, 5 - pct / 20));
+    const weightAdjusted = mainProblem === "fome-descontrolada" ? Math.min(5, weightProblem + 0.2) : weightProblem;
+    const energyProblemCurrent = Math.max(0, Math.min(5, 5 - (mixedEnergy + hydrationBonus * 0.4)));
+    const sleepProblemCurrent = Math.max(0, Math.min(5, 5 - mixedSleep));
+    const bloatingProblemCurrent = Math.max(0, Math.min(5, mixedBloating));
+    const hungerProblemCurrent = Math.max(0, Math.min(5, mixedHunger));
+    const stressProblemCurrent = Math.max(0, Math.min(5, mixedStress - Math.min(1, chatCountToday * 0.15)));
 
     // Baseline do quiz inicial (estudo da pessoa) interligado com o estado atual.
     const energyProblem = quizBaseline
@@ -247,14 +242,14 @@ export function ProgressRadar({
   const polygonPoints = metrics
     .map((m, i) => point(cx, cy, maxR * clamp01(m.score / 5), axisAngles[i]))
     .join(" ");
-  // Referência visual do "equilíbrio saudável" (alvo ideal da app).
-  // Fica na 3ª/4ª linha da grelha para mostrar um objetivo realista e sustentado.
-  const healthyTargetScore = 3.6;
+  // Referência visual de saúde "boa" (2 linhas após o centro).
+  const healthyTargetScore = 2;
   const healthyTargetPoints = metrics
     .map((_, i) => point(cx, cy, maxR * clamp01(healthyTargetScore / 5), axisAngles[i]))
     .join(" ");
 
-  const overall = Math.round((metrics.reduce((acc, m) => acc + m.score, 0) / (metrics.length * 5)) * 100);
+  const avgProblem = metrics.reduce((acc, m) => acc + m.score, 0) / metrics.length;
+  const overall = Math.round((1 - avgProblem / 5) * 100);
 
   return (
     <GlassCard>
