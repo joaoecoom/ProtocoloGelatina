@@ -1,26 +1,129 @@
 @import "tailwindcss";
 
+/* —— Protocolo Gelatina Inteligente · design premium ——
+   Florestas profundas, rosas vinho, fundo menta-creme. */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Marca */
+  --pg-forest: #1b4332;
+  --pg-forest-light: #2d6a4f;
+  --pg-berry: #9d174d;
+  --pg-berry-light: #c2185b;
+  --pg-rose-muted: #a8556c;
+  --pg-mint-wash: #f1f7f3;
+  --pg-cream: #fffbf9;
+  --pg-surface: rgba(255, 255, 255, 0.72);
+  --pg-ink: #141816;
+
+  /* Compat. legado (componentes) */
+  --background: #f1f7f3;
+  --foreground: var(--pg-ink);
+  --primary: #2d6a4f;
+  --primary-soft: #e6f2eb;
+  --accent: #c2185b;
+  --accent-soft: #fce7ef;
+  --glass: var(--pg-surface);
+  --glass-border: rgba(255, 255, 255, 0.45);
+  --glass-shine: rgba(255, 255, 255, 0.5);
+
+  /* Sombras: camadas suaves, não glow barato */
+  --shadow-sm: 0 1px 2px rgba(27, 67, 50, 0.04);
+  --shadow-md: 0 8px 32px -8px rgba(27, 67, 50, 0.1), 0 2px 8px -4px rgba(157, 23, 77, 0.06);
+  --shadow-elev: 0 20px 50px -20px rgba(27, 67, 50, 0.18), 0 8px 20px -12px rgba(157, 23, 77, 0.08);
+  --shadow-cta: 0 18px 40px -15px rgba(45, 106, 79, 0.45);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-primary: var(--primary);
+  --color-accent: var(--accent);
+  --color-pg-forest: #1b4332;
+  --color-pg-forest-light: #2d6a4f;
+  --color-pg-berry: #9d174d;
+  --color-pg-berry-light: #c2185b;
+  --color-pg-rose-muted: #a8556c;
+  --color-pg-mint: #f1f7f3;
+  --color-pg-cream: #fffbf9;
+  --color-pg-ink: #141816;
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+  --font-serif: var(--font-display);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background:
+      radial-gradient(120% 100% at 50% 0%, #f0faf4 0%, #f1f7f3 40%, #fffbf9 100%),
+      var(--pg-mint-wash);
+    color: var(--foreground);
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    min-height: 100dvh;
+  }
+
+  ::selection {
+    background: rgba(157, 23, 77, 0.18);
+    color: var(--pg-ink);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.font-display {
+  font-family: var(--font-display), ui-serif, Georgia, "Times New Roman", serif;
+  font-weight: 600;
+  font-feature-settings: "liga" 1, "kern" 1;
+}
+
+.pg-kicker {
+  @apply text-[10px] font-semibold uppercase tracking-[0.28em] text-pg-rose-muted;
+  letter-spacing: 0.28em;
+}
+
+.pg-hero-line {
+  @apply bg-gradient-to-r from-pg-berry via-pg-berry-light to-rose-500 bg-clip-text text-transparent;
+}
+
+.glass-panel {
+  background: linear-gradient(145deg, var(--pg-surface) 0%, rgba(255, 255, 255, 0.5) 100%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-md), inset 0 1px 0 0 var(--glass-shine);
+  backdrop-filter: blur(20px) saturate(1.15);
+  -webkit-backdrop-filter: blur(20px) saturate(1.15);
+}
+
+.pg-cta-forest {
+  @apply inline-flex items-center justify-center rounded-full font-semibold text-white transition;
+  background: linear-gradient(180deg, #2f7a58 0%, var(--pg-forest-light) 100%);
+  box-shadow: var(--shadow-cta);
+}
+.pg-cta-forest:hover {
+  filter: brightness(1.04);
+  box-shadow: 0 22px 48px -16px rgba(27, 67, 50, 0.5);
+}
+.pg-cta-berry {
+  @apply inline-flex items-center justify-center rounded-full font-semibold text-white transition;
+  background: linear-gradient(130deg, #9d174d 0%, #db2777 55%, #f472b6 100%);
+  box-shadow: 0 20px 44px -18px rgba(157, 23, 77, 0.55);
+}
+.pg-cta-berry:hover {
+  filter: brightness(1.05);
+}
+
+/* Bolha de chat — utilitário (não reutilizar pg-cta em divs de texto) */
+.pg-bubble-user {
+  @apply text-white;
+  background: linear-gradient(130deg, #7f123d 0%, #9d174d 40%, #c2185b 100%);
+  box-shadow: 0 10px 28px -10px rgba(157, 23, 77, 0.45);
+}
+
+.pg-input {
+  @apply mt-1 w-full rounded-2xl border border-pg-forest/12 bg-white/90 px-4 py-3 text-sm text-pg-ink outline-none transition placeholder:text-pg-forest/35 focus:border-pg-berry/30 focus:ring-2 focus:ring-pg-berry/12;
+}
+
+.pg-badge {
+  @apply inline-flex items-center rounded-full border border-pg-forest/10 bg-white/75 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-pg-forest/75;
 }

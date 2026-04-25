@@ -1,0 +1,105 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum PlanId {
+  FRONT
+  UPSELL_1
+  DS1_UP1
+  DS2_UP1
+  DS3_UP1
+  UPSELL_2
+  DS1_UP2
+  DS2_UP2
+  DS3_UP2
+}
+
+/// Perfil da app; `id` = `auth.users.id` (Supabase Auth)
+model User {
+  id                    String         @id @db.Uuid
+  email                 String         @unique
+  name                  String
+  plan                  PlanId         @default(FRONT)
+  onboardingCompleted   Boolean        @default(false)
+  age                   Int?
+  heightCm              Float?
+  weightKg              Float?
+  goalWeightKg          Float?
+  goal                  String?
+  mainProblem           String?
+  streak                Int            @default(0)
+  lastGelatinaAt        DateTime?
+  startWeightKg         Float?
+  /// Quando a utilizadora fecha o guia de primeiros passos (null = ainda não viu).
+  welcomeGuideDismissedAt DateTime?
+  /// Acesso total a conteúdos / limites como plano máximo (uso interno).
+  isSuperAdmin          Boolean        @default(false)
+  /// Foto de perfil: URL pública (Supabase Storage, bucket `avatars`; requer SUPABASE_SERVICE_ROLE_KEY).
+  avatarUrl             String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  trackingDays          DailyTrack[]
+  gelatinaLogs          GelatinaLog[]
+  chatUsages            ChatUsage[]
+  chatMessages          ChatMessage[]
+}
+
+model DailyTrack {
+  id        String   @id @default(cuid())
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      String
+  waterMl   Int      @default(0)
+  /// Nota curta "como te sentes hoje" (check-in do dia).
+  moodNote  String?  @db.VarChar(500)
+  bloating  Int      @default(3)
+  energy    Int      @default(3)
+  hunger    Int      @default(3)
+  sleep     Int      @default(3)
+  /// Marcações por momento do dia (manhã, almoço, lanche, janta) — lembretes 3–4x/dia.
+  markManha  Boolean  @default(false)
+  markAlmoco Boolean  @default(false)
+  markLanche Boolean  @default(false)
+  markJanta  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, date])
+}
+
+model GelatinaLog {
+  id        String   @id @default(cuid())
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, date])
+}
+
+model ChatUsage {
+  id        String   @id @default(cuid())
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      String
+  count     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String
+  text      String   @db.VarChar(4000)
+  createdAt DateTime @default(now())
+}
