@@ -11,8 +11,10 @@ import {
   isPlanActiveOnDate,
   normalizeYmd,
   readActiveProtocolPlans,
+  syncProtocolPlansStateToServer,
   type ActiveProtocolPlan,
 } from "@/lib/protocol-plans";
+import type { MealSlotKey } from "@/lib/push/meal-slots";
 
 export type DashboardTracking = {
   waterMl: number;
@@ -38,6 +40,7 @@ export type DashboardContentProps = {
   mainProblem?: string | null;
   chatCountToday?: number;
   initialTracking: DashboardTracking;
+  serverMealReminderSchedule?: Record<MealSlotKey, string> | null;
 };
 
 export function DashboardContent({
@@ -51,6 +54,7 @@ export function DashboardContent({
   mainProblem,
   chatCountToday = 0,
   initialTracking,
+  serverMealReminderSchedule = null,
 }: DashboardContentProps) {
   const [activePlans, setActivePlans] = useState<ActiveProtocolPlan[]>([]);
   const [liveWeightKg, setLiveWeightKg] = useState<number | null>(weightKg);
@@ -58,6 +62,11 @@ export function DashboardContent({
   useEffect(() => {
     setActivePlans(readActiveProtocolPlans());
   }, []);
+
+  useEffect(() => {
+    if (databaseOffline) return;
+    void syncProtocolPlansStateToServer();
+  }, [databaseOffline]);
 
   useEffect(() => {
     setLiveWeightKg(weightKg);
@@ -175,6 +184,7 @@ export function DashboardContent({
         databaseOffline={databaseOffline}
         initialDate={date}
         initialTracking={initialTracking}
+        serverMealReminderSchedule={serverMealReminderSchedule}
       />
     </div>
   );

@@ -9,20 +9,26 @@ import {
   hasPlanCheckin,
   isPlanActiveOnDate,
   markPlanCheckin,
+  syncProtocolPlansStateToServer,
   type ActiveProtocolPlan,
 } from "@/lib/protocol-plans";
+import {
+  DEFAULT_MEAL_SCHEDULE,
+  MEAL_SLOT_KEYS,
+  MEAL_SLOT_LABELS,
+  type MealSlotKey,
+} from "@/lib/push/meal-slots";
 
 const ML_CUP = 200;
 const MAX_CUPS = 25;
 
-const DAY_SLOTS = [
-  { key: "markManha" as const, label: "Pequeno-almoço", defaultTime: "08:00" },
-  { key: "markAlmoco" as const, label: "Almoço", defaultTime: "13:00" },
-  { key: "markLanche" as const, label: "Lanche", defaultTime: "17:00" },
-  { key: "markJanta" as const, label: "Jantar", defaultTime: "20:00" },
-] as const;
+const DAY_SLOTS = MEAL_SLOT_KEYS.map((key) => ({
+  key,
+  label: MEAL_SLOT_LABELS[key],
+  defaultTime: DEFAULT_MEAL_SCHEDULE[key],
+}));
 
-type SlotKey = (typeof DAY_SLOTS)[number]["key"];
+type SlotKey = MealSlotKey;
 
 type Tracking = {
   waterMl: number;
@@ -43,6 +49,8 @@ type Props = {
   activePlans?: ActiveProtocolPlan[];
   /** Sem ligação ao Postgres — não persistir tracking/gelatina. */
   databaseOffline?: boolean;
+  /** Horários guardados no servidor para lembretes push (null = só localStorage até sincronizar). */
+  serverMealReminderSchedule?: Record<MealSlotKey, string> | null;
 };
 
 function snapMlToCups(ml: number) {
@@ -73,6 +81,27 @@ function timeToMinutes(hhmm: string) {
   const [h, m] = hhmm.split(":").map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(m)) return 0;
   return h * 60 + m;
+}
+
+function buildSlotScheduleFromSources(server: Record<MealSlotKey, string> | null | undefined): Record<MealSlotKey, string> {
+  const base: Record<MealSlotKey, string> = { ...DEFAULT_MEAL_SCHEDULE };
+  if (typeof window !== "undefined") {
+    for (const key of MEAL_SLOT_KEYS) {
+      const loc = window.localStorage.getItem(slotScheduleStorageKey(key));
+      if (loc) base[key] = loc;
+    }
+  }
+  if (server) {
+    for (const key of MEAL_SLOT_KEYS) {
+      if (server[key]) base[key] = server[key];
+    }
+  }
+  return base;
+}
+
+function readPushActiveFromStorage() {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem("pg-push-active") === "1";
 }
 
 function publishRadarSnapshot(snapshot: {
@@ -107,18 +136,17 @@ export function DashboardClient({
   initialDate,
   activePlans = [],
   databaseOffline = false,
+  serverMealReminderSchedule = null,
 }: Props) {
   const [tracking, setTracking] = useState<Tracking>(initialTracking);
   const [checkinDraft, setCheckinDraft] = useState<NonNullable<Tracking>>(
     () => baseTracking(initialTracking),
   );
   const [moodDraft, setMoodDraft] = useState(() => "");
-  const [slotSchedule, setSlotSchedule] = useState<Record<SlotKey, string>>({
-    markManha: "08:00",
-    markAlmoco: "13:00",
-    markLanche: "17:00",
-    markJanta: "20:00",
-  });
+  const [slotSchedule, setSlotSchedule] = useState<Record<SlotKey, string>>(() =>
+    buildSlotScheduleFromSources(serverMealReminderSchedule),
+  );
+  const [pushActive, setPushActive] = useState(false);
   const [slotFood, setSlotFood] = useState<Record<SlotKey, string>>({
     markManha: "",
     markAlmoco: "",
@@ -136,6 +164,7 @@ export function DashboardClient({
   const [tick, setTick] = useState(0);
   const [, setPlanCheckBust] = useState(0);
   const didWaterSnap = useRef(false);
+  const scheduleSyncTimer = useRef<number | null>(null);
 
   const patchTracking = useCallback(
     async (partial: Partial<NonNullable<Tracking>>) => {
@@ -171,12 +200,15 @@ export function DashboardClient({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setSlotSchedule({
-      markManha: window.localStorage.getItem(slotScheduleStorageKey("markManha")) ?? DAY_SLOTS[0].defaultTime,
-      markAlmoco: window.localStorage.getItem(slotScheduleStorageKey("markAlmoco")) ?? DAY_SLOTS[1].defaultTime,
-      markLanche: window.localStorage.getItem(slotScheduleStorageKey("markLanche")) ?? DAY_SLOTS[2].defaultTime,
-      markJanta: window.localStorage.getItem(slotScheduleStorageKey("markJanta")) ?? DAY_SLOTS[3].defaultTime,
-    });
+    setPushActive(readPushActiveFromStorage());
+    const onFocus = () => setPushActive(readPushActiveFromStorage());
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setSlotSchedule(buildSlotScheduleFromSources(serverMealReminderSchedule));
     setSlotFood({
       markManha: window.localStorage.getItem(slotFoodStorageKey(initialDate, "markManha")) ?? "",
       markAlmoco: window.localStorage.getItem(slotFoodStorageKey(initialDate, "markAlmoco")) ?? "",
@@ -189,7 +221,13 @@ export function DashboardClient({
       markLanche: window.localStorage.getItem(slotSkippedStorageKey(initialDate, "markLanche")) === "1",
       markJanta: window.localStorage.getItem(slotSkippedStorageKey(initialDate, "markJanta")) === "1",
     });
-  }, [initialDate]);
+  }, [initialDate, serverMealReminderSchedule]);
+
+  useEffect(() => {
+    return () => {
+      if (scheduleSyncTimer.current) window.clearTimeout(scheduleSyncTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (databaseOffline || didWaterSnap.current) return;
@@ -207,15 +245,7 @@ export function DashboardClient({
   }, []);
 
   useEffect(() => {
-    if (databaseOffline) return;
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    if (Notification.permission === "default") {
-      void Notification.requestPermission();
-    }
-  }, [databaseOffline]);
-
-  useEffect(() => {
-    if (databaseOffline) return;
+    if (databaseOffline || pushActive) return;
     if (typeof window === "undefined" || !("Notification" in window)) return;
     if (Notification.permission !== "granted") return;
 
@@ -239,10 +269,10 @@ export function DashboardClient({
     maybeNotify();
     const timer = window.setInterval(maybeNotify, 30_000);
     return () => clearInterval(timer);
-  }, [databaseOffline, initialDate, slotSchedule, slotSkipped, tracking]);
+  }, [databaseOffline, initialDate, pushActive, slotSchedule, slotSkipped, tracking]);
 
   useEffect(() => {
-    if (databaseOffline || !activePlans.length) return;
+    if (databaseOffline || pushActive || !activePlans.length) return;
     if (typeof window === "undefined" || !("Notification" in window)) return;
     if (Notification.permission !== "granted") return;
 
@@ -267,7 +297,7 @@ export function DashboardClient({
     notifyPlans();
     const timer = window.setInterval(notifyPlans, 30_000);
     return () => clearInterval(timer);
-  }, [activePlans, databaseOffline, initialDate]);
+  }, [activePlans, databaseOffline, initialDate, pushActive]);
 
   const sliders = useMemo(
     () => [
@@ -343,8 +373,25 @@ export function DashboardClient({
     }
   }
 
+  function scheduleServerSync(next: Record<SlotKey, string>) {
+    if (databaseOffline) return;
+    if (scheduleSyncTimer.current) window.clearTimeout(scheduleSyncTimer.current);
+    scheduleSyncTimer.current = window.setTimeout(() => {
+      scheduleSyncTimer.current = null;
+      void fetch("/api/user/meal-reminder-schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      });
+    }, 800);
+  }
+
   function updateSlotSchedule(key: SlotKey, value: string) {
-    setSlotSchedule((prev) => ({ ...prev, [key]: value }));
+    setSlotSchedule((prev) => {
+      const next = { ...prev, [key]: value };
+      scheduleServerSync(next);
+      return next;
+    });
     if (typeof window !== "undefined") {
       window.localStorage.setItem(slotScheduleStorageKey(key), value);
     }
@@ -367,6 +414,7 @@ export function DashboardClient({
   function markPlanAsDone(planId: string) {
     markPlanCheckin(planId, initialDate);
     setPlanCheckBust((n) => n + 1);
+    void syncProtocolPlansStateToServer();
   }
 
   return (

@@ -42,12 +42,50 @@ model User {
   isSuperAdmin          Boolean        @default(false)
   /// Foto de perfil: URL pública (Supabase Storage, bucket `avatars`; requer SUPABASE_SERVICE_ROLE_KEY).
   avatarUrl             String?
+  /// Horários das refeições para lembretes push no servidor (JSON: markManha, markAlmoco, … "HH:MM").
+  mealReminderSchedule  Json?
+  /// IANA, ex. Europe/Lisbon — usado pelo cron para “hoje” e hora local.
+  reminderTimeZone      String?        @db.VarChar(80)
+  /// Preferências de notificação persistidas (ex.: daily, progress, reactivation).
+  notificationPrefs     Json?
+  /// Planos de protocolo activos para push no servidor: [{ id, startedAt }].
+  activeProtocolPlans   Json?
+  /// Check-ins de plano por dia: chave `planId:YYYY-MM-DD` → true (espelho do localStorage).
+  protocolPlanCheckins  Json?
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
   trackingDays          DailyTrack[]
   gelatinaLogs          GelatinaLog[]
   chatUsages            ChatUsage[]
   chatMessages          ChatMessage[]
+  pushSubscriptions     PushSubscription[]
+  pushReminderLogs      PushReminderLog[]
+}
+
+/// Subscrição Web Push (FCM/APNs via browser); uma por endpoint/dispositivo.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Evita reenviar o mesmo lembrete no mesmo dia (cron).
+model PushReminderLog {
+  id        String   @id @default(cuid())
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dateYmd   String   @db.VarChar(10)
+  kind      String   @db.VarChar(64)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, dateYmd, kind])
+  @@index([userId, dateYmd])
 }
 
 model DailyTrack {

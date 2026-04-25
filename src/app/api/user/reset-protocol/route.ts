@@ -36,6 +36,8 @@ export async function POST() {
             "mainProblem" = NULL,
             "startWeightKg" = NULL,
             "welcomeGuideDismissedAt" = NULL,
+            "activeProtocolPlans" = NULL,
+            "protocolPlanCheckins" = NULL,
             "updatedAt" = NOW()
           WHERE "id" = ${user.id}::uuid
         `,

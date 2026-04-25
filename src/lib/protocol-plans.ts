@@ -96,7 +96,7 @@ export function writeActiveProtocolPlans(plans: ActiveProtocolPlan[]) {
   window.localStorage.setItem(ACTIVE_PLANS_KEY, JSON.stringify(plans));
 }
 
-function readCheckins(): Record<string, true> {
+export function readProtocolPlanCheckins(): Record<string, true> {
   if (typeof window === "undefined") return {};
   const raw = window.localStorage.getItem(PLAN_CHECKINS_KEY);
   if (!raw) return {};
@@ -106,6 +106,10 @@ function readCheckins(): Record<string, true> {
   } catch {
     return {};
   }
+}
+
+function readCheckins(): Record<string, true> {
+  return readProtocolPlanCheckins();
 }
 
 function writeCheckins(map: Record<string, true>) {
@@ -150,4 +154,64 @@ export function isPlanActiveOnDate(plan: ActiveProtocolPlan, dateYmd: string) {
   const diffMs = date.getTime() - new Date(start.getFullYear(), start.getMonth(), start.getDate(), 12).getTime();
   const day = Math.floor(diffMs / 86_400_000);
   return day >= 0 && day < plan.durationDays;
+}
+
+/** Só `id` + `startedAt` — o servidor junta com os templates. */
+export type StoredActiveProtocolPlan = { id: string; startedAt: string };
+
+export function mergeStoredPlansWithTemplates(stored: unknown): ActiveProtocolPlan[] {
+  if (!Array.isArray(stored)) return [];
+  const out: ActiveProtocolPlan[] = [];
+  for (const row of stored) {
+    if (!row || typeof row !== "object") continue;
+    const id = (row as { id?: unknown }).id;
+    const startedAt = (row as { startedAt?: unknown }).startedAt;
+    if (typeof id !== "string" || typeof startedAt !== "string") continue;
+    const t = PROTOCOL_PLAN_TEMPLATES.find((p) => p.id === id);
+    if (!t) continue;
+    out.push({ ...t, startedAt });
+  }
+  return out;
+}
+
+export function parseProtocolPlanCheckinsJson(raw: unknown): Record<string, true> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, true> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (v === true) out[k] = true;
+  }
+  return out;
+}
+
+/** Dias úteis restantes no plano a partir de `dateYmd` (0 = último dia). `null` se fora do intervalo. */
+export function planDaysRemainingOnDate(plan: ActiveProtocolPlan, dateYmd: string): number | null {
+  const start = new Date(plan.startedAt);
+  const date = new Date(`${dateYmd}T12:00:00`);
+  const diffMs = date.getTime() - new Date(start.getFullYear(), start.getMonth(), start.getDate(), 12).getTime();
+  const day = Math.floor(diffMs / 86_400_000);
+  if (day < 0 || day >= plan.durationDays) return null;
+  return plan.durationDays - day - 1;
+}
+
+/**
+ * Sincroniza planos activos + check-ins com o servidor (para push/cron).
+ * Não falha em silêncio crítico — devolve `true` se OK.
+ */
+export async function syncProtocolPlansStateToServer(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  const activePlans: StoredActiveProtocolPlan[] = readActiveProtocolPlans().map((p) => ({
+    id: p.id,
+    startedAt: p.startedAt,
+  }));
+  const checkins = readProtocolPlanCheckins();
+  try {
+    const res = await fetch("/api/user/protocol-plans-state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ activePlans, checkins }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }

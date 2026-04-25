@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PROTOCOL_PLAN_TEMPLATES } from "@/lib/protocol-plans";
 
 const planIds = [
   "FRONT",
@@ -65,4 +66,45 @@ export const trackingSchema = z.object({
 
 export const planUpdateSchema = z.object({
   plan: z.enum(planIds),
+});
+
+const hhmm = z.string().regex(/^\d{1,2}:\d{2}$/);
+
+export const mealReminderScheduleSchema = z.object({
+  markManha: hhmm,
+  markAlmoco: hhmm,
+  markLanche: hhmm,
+  markJanta: hhmm,
+});
+
+export const pushSubscribeBodySchema = z.object({
+  subscription: z.object({
+    endpoint: z.string().min(20),
+    keys: z.object({
+      p256dh: z.string().min(1),
+      auth: z.string().min(1),
+    }),
+    expirationTime: z.number().nullable().optional(),
+  }),
+  timeZone: z.string().min(1).max(80).optional(),
+});
+
+export const pushUnsubscribeBodySchema = z.object({
+  endpoint: z.string().min(20),
+});
+
+export const notificationPrefsBodySchema = z.object({
+  daily: z.boolean(),
+  progress: z.boolean(),
+  reactivation: z.boolean(),
+});
+
+const storedActivePlanSchema = z.object({
+  id: z.string().refine((id) => PROTOCOL_PLAN_TEMPLATES.some((t) => t.id === id)),
+  startedAt: z.string().min(16).max(40),
+});
+
+export const protocolPlansStateSchema = z.object({
+  activePlans: z.array(storedActivePlanSchema).max(20),
+  checkins: z.record(z.string().max(120), z.literal(true)).optional(),
 });

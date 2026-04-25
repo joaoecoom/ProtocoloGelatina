@@ -6,6 +6,7 @@ import {
   activateProtocolPlan,
   deactivateProtocolPlan,
   readActiveProtocolPlans,
+  syncProtocolPlansStateToServer,
   type ProtocolPlanCategory,
 } from "@/lib/protocol-plans";
 import { GlassCard } from "@/components/glass-card";
@@ -27,11 +28,13 @@ export function ProtocolPlanManager({ category }: { category: ProtocolPlanCatego
       const next = deactivateProtocolPlan(planId);
       setActiveIds(new Set(next.map((p) => p.id)));
       setMessage("Plano removido do acompanhamento.");
+      void syncProtocolPlansStateToServer();
       return;
     }
     const next = activateProtocolPlan(selected);
     setActiveIds(new Set(next.map((p) => p.id)));
     setMessage("Plano ativado e pronto para aparecer no calendário.");
+    void syncProtocolPlansStateToServer();
   }
 
   return (

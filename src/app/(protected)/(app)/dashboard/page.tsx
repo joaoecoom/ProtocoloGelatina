@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
 import { todayKey } from "@/lib/day";
+import { parseMealScheduleJson } from "@/lib/push/meal-slots";
 import { DashboardShell } from "./dashboard-shell";
 
 function progressPercent(params: {
@@ -61,6 +62,9 @@ export default async function DashboardPage() {
       }
     : null;
 
+  const serverMealReminderSchedule =
+    user.mealReminderSchedule != null ? parseMealScheduleJson(user.mealReminderSchedule) : null;
+
   return (
     <DashboardShell
       databaseOffline={databaseOffline}
@@ -73,6 +77,7 @@ export default async function DashboardPage() {
       mainProblem={user.mainProblem}
       chatCountToday={chatCountToday}
       initialTracking={initialTracking}
+      serverMealReminderSchedule={serverMealReminderSchedule}
     />
   );
 }
