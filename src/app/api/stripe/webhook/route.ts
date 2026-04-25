@@ -1,4 +1,5 @@
 import type { PlanId } from "@prisma/client";
+import type Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getPlanIdForStripePrice, getStripe } from "@/lib/stripe";
@@ -54,6 +55,41 @@ export async function POST(request: Request) {
         const plan = session.metadata?.plan as PlanId | undefined;
         if (userId && plan) {
           await updatePlanByUserId(userId, plan);
+        }
+
+        // Converte subscrição "entrada" para schedule com mudança automática para mensal.
+        const subscriptionId =
+          typeof session.subscription === "string" ? session.subscription : null;
+        const monthlyPriceId = session.metadata?.monthlyPriceId;
+        const trialDays = Number(session.metadata?.trialDays ?? "7");
+
+        if (subscriptionId && monthlyPriceId) {
+          const sub = (await stripe.subscriptions.retrieve(
+            subscriptionId,
+          )) as unknown as Stripe.Subscription;
+          const startDate = Math.floor(Date.now() / 1000);
+          const secondPhaseStart = startDate + Math.max(1, trialDays) * 24 * 60 * 60;
+
+          const schedule = await stripe.subscriptionSchedules.create({
+            from_subscription: subscriptionId,
+          });
+          await stripe.subscriptionSchedules.update(schedule.id, {
+            end_behavior: "release",
+            phases: [
+              {
+                start_date: startDate,
+                end_date: secondPhaseStart,
+                items: sub.items.data.map((item) => ({
+                  price: item.price.id,
+                  quantity: item.quantity ?? 1,
+                })),
+              },
+              {
+                start_date: secondPhaseStart,
+                items: [{ price: monthlyPriceId, quantity: 1 }],
+              },
+            ],
+          });
         }
         break;
       }

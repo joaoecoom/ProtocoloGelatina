@@ -15,6 +15,7 @@ export const PLAN_CATALOG: Record<
   {
     label: string;
     trialEuro: number;
+    trialDays: number;
     monthlyEuro: number;
     description: string;
   }
@@ -22,54 +23,63 @@ export const PLAN_CATALOG: Record<
   FRONT: {
     label: "Protocolo da Gelatina",
     trialEuro: 6.99,
+    trialDays: 7,
     monthlyEuro: 29.99,
     description: "Gelatina completa, dashboard, tracking e Jéssica limitada.",
   },
   UPSELL_1: {
     label: "Plano X",
     trialEuro: 4.99,
+    trialDays: 7,
     monthlyEuro: 29.99,
     description: "Kiwi, banana, combinações, planos avançados, cursos e ebooks completos.",
   },
   DS1_UP1: {
     label: "Plano X · Desinchar",
     trialEuro: 3.99,
+    trialDays: 7,
     monthlyEuro: 19.99,
     description: "Kiwi + pepino, 1 curso, Jéssica nível médio.",
   },
   DS2_UP1: {
     label: "Plano X · 7 dias",
     trialEuro: 2.99,
+    trialDays: 7,
     monthlyEuro: 12.99,
     description: "Plano estruturado de 7 dias + 1 ebook.",
   },
   DS3_UP1: {
     label: "Plano X · Rotina noturna",
     trialEuro: 1.99,
+    trialDays: 7,
     monthlyEuro: 9.99,
     description: "Rotina noturna + mini guia.",
   },
   UPSELL_2: {
     label: "Plano X Pro",
     trialEuro: 7.99,
+    trialDays: 7,
     monthlyEuro: 19.99,
     description: "Tudo do nível anterior + alimentação, receitas, treino e prioridade na Jéssica.",
   },
   DS1_UP2: {
     label: "Plano X Pro · Alimentação",
     trialEuro: 4.99,
+    trialDays: 7,
     monthlyEuro: 12.99,
     description: "Alimentação simples, rotina e cursos (sem treino).",
   },
   DS2_UP2: {
     label: "Plano X Pro · Mentalidade",
     trialEuro: 2.99,
+    trialDays: 7,
     monthlyEuro: 9.99,
     description: "Cursos de mentalidade e controlo da fome.",
   },
   DS3_UP2: {
     label: "Plano X Pro · Biblioteca",
     trialEuro: 1.99,
+    trialDays: 7,
     monthlyEuro: 4.99,
     description: "Ebooks completos + plano simples.",
   },

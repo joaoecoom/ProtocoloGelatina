@@ -19,6 +19,10 @@ function envForPlan(plan: PlanId) {
   return `STRIPE_PRICE_${plan}`;
 }
 
+function envForIntroPlan(plan: PlanId) {
+  return `STRIPE_PRICE_${plan}_INTRO`;
+}
+
 export function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) {
@@ -34,6 +38,12 @@ export function getStripe() {
 
 export function getStripePriceIdForPlan(plan: PlanId) {
   const value = process.env[envForPlan(plan)];
+  if (!value) return null;
+  return value;
+}
+
+export function getStripeIntroPriceIdForPlan(plan: PlanId) {
+  const value = process.env[envForIntroPlan(plan)];
   if (!value) return null;
   return value;
 }
