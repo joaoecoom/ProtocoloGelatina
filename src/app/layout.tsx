@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Fraunces, Plus_Jakarta_Sans } from "next/font/google";
-import Script from "next/script";
 import { DevToolsProvider } from "@/components/dev-tools-provider";
 import "./globals.css";
 
@@ -41,8 +40,6 @@ export const metadata: Metadata = {
   },
 };
 
-const STRIP_BIS_SKIN_SCRIPT = `(function(){function s(){try{document.querySelectorAll("[bis_skin_checked]").forEach(function(e){e.removeAttribute("bis_skin_checked");});}catch(_){}}var q=false;function r(){if(q)return;q=true;requestAnimationFrame(function(){q=false;s();});}s();if(typeof MutationObserver==="undefined")return;new MutationObserver(function(){r();}).observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:["bis_skin_checked"]});})();`;
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -59,11 +56,6 @@ export default function RootLayout({
         style={{ fontFamily: "var(--font-sans), system-ui, sans-serif" }}
         suppressHydrationWarning
       >
-        <Script
-          id="strip-bis-skin"
-          strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{ __html: STRIP_BIS_SKIN_SCRIPT }}
-        />
         <DevToolsProvider />
         {children}
       </body>

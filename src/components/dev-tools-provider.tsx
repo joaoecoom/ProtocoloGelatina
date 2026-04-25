@@ -157,7 +157,6 @@ export function DevToolsProvider() {
   return (
     <>
       <Toaster position="top-center" richColors closeButton theme="light" />
-      <DevApiLogPanel />
     </>
   );
 }

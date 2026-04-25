@@ -27,8 +27,13 @@ export function LoginForm() {
       return;
     }
     const data = await res.json();
-    router.push(data.user.onboardingCompleted ? "/dashboard" : "/onboarding");
+    const nextPath = data.user.onboardingCompleted ? "/dashboard" : "/onboarding";
+    router.push(nextPath);
     router.refresh();
+    // Fallback para browsers embebidos onde o router client pode falhar.
+    setTimeout(() => {
+      window.location.assign(nextPath);
+    }, 150);
   }
 
   return (

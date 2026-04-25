@@ -8,6 +8,22 @@ import {
   displayNameFromAuth,
 } from "@/lib/auth-profile";
 
+function hasMinimumOnboardingData(params: {
+  age?: number | null;
+  heightCm?: number | null;
+  weightKg?: number | null;
+  goal?: string | null;
+  mainProblem?: string | null;
+}) {
+  return Boolean(
+    params.age &&
+      params.heightCm &&
+      params.weightKg &&
+      params.goal?.trim() &&
+      params.mainProblem?.trim(),
+  );
+}
+
 /**
  * Garante linha em `User` (Prisma) a partir do utilizador Auth.
  * Se a base falhar, devolve perfil mínimo em memória.
@@ -30,8 +46,25 @@ export async function syncProfileForAuthUser(authUser: AuthUser): Promise<User> 
       update: { email },
     });
 
-    // Se DB ainda não recebeu o onboarding mas metadata já tem backup, não bloquear entrada no dashboard.
-    if (!row.onboardingCompleted && onboardingMeta?.completed === true) {
+    const rowHasRequiredData = hasMinimumOnboardingData({
+      age: row.age,
+      heightCm: row.heightCm,
+      weightKg: row.weightKg,
+      goal: row.goal,
+      mainProblem: row.mainProblem,
+    });
+
+    const metaHasRequiredData = hasMinimumOnboardingData({
+      age: typeof onboardingMeta?.age === "number" ? onboardingMeta.age : null,
+      heightCm: typeof onboardingMeta?.heightCm === "number" ? onboardingMeta.heightCm : null,
+      weightKg: typeof onboardingMeta?.weightKg === "number" ? onboardingMeta.weightKg : null,
+      goal: typeof onboardingMeta?.goal === "string" ? onboardingMeta.goal : null,
+      mainProblem:
+        typeof onboardingMeta?.mainProblem === "string" ? onboardingMeta.mainProblem : null,
+    });
+
+    // Só tratamos onboarding como concluído se existir payload mínimo completo.
+    if (!rowHasRequiredData && onboardingMeta?.completed === true && metaHasRequiredData) {
       return {
         ...row,
         onboardingCompleted: true,
@@ -48,6 +81,10 @@ export async function syncProfileForAuthUser(authUser: AuthUser): Promise<User> 
             ? onboardingMeta.mainProblem
             : row.mainProblem,
       };
+    }
+
+    if (row.onboardingCompleted && !rowHasRequiredData) {
+      return { ...row, onboardingCompleted: false };
     }
 
     return row;

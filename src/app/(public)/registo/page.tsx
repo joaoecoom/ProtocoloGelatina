@@ -1,5 +1,5 @@
-import { RegistoPageClient } from "./registo-page-client";
+import RegistoView from "./registo-view";
 
 export default function RegisterPage() {
-  return <RegistoPageClient />;
+  return <RegistoView />;
 }

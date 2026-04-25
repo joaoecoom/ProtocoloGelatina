@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "prisma generate && next dev",
+    "dev": "prisma generate && next dev --webpack",
     "dev:fresh": "npx --yes kill-port@2.0.1 3000 3001 && npm run dev",
     "dev:webpack": "next dev --webpack",
     "build": "prisma generate && next build",

@@ -1,5 +1,5 @@
-import { EntrarPageClient } from "./entrar-page-client";
+import EntrarView from "./entrar-view";
 
 export default function LoginPage() {
-  return <EntrarPageClient />;
+  return <EntrarView />;
 }
