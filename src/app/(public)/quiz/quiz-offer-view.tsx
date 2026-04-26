@@ -284,6 +284,7 @@ export default function QuizOfferView() {
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [showFinalSalesStep, setShowFinalSalesStep] = useState(false);
+  const [analyzingProgress, setAnalyzingProgress] = useState(1);
 
   const currentQuestionIndex = step - 1;
   const current = currentQuestionIndex >= 0 ? QUESTIONS[currentQuestionIndex] : undefined;
@@ -302,11 +303,28 @@ export default function QuizOfferView() {
   const adherenceScore = Math.max(72, Math.min(97, 80 + Math.round((totalScore / Math.max(QUESTIONS.length, 1)) * 4)));
 
   useEffect(() => {
-    if (!isAnalyzing) return;
-    const timeout = window.setTimeout(() => {
-      setStep(QUESTIONS.length + 2);
-    }, 2800);
-    return () => window.clearTimeout(timeout);
+    if (!isAnalyzing) {
+      setAnalyzingProgress(1);
+      return;
+    }
+
+    let finishTimeout: number | undefined;
+    const interval = window.setInterval(() => {
+      setAnalyzingProgress((prev) => {
+        const next = Math.min(100, prev + (prev < 70 ? 3 : prev < 90 ? 2 : 1));
+        if (next >= 100 && !finishTimeout) {
+          finishTimeout = window.setTimeout(() => {
+            setStep(QUESTIONS.length + 2);
+          }, 350);
+        }
+        return next;
+      });
+    }, 35);
+
+    return () => {
+      window.clearInterval(interval);
+      if (finishTimeout) window.clearTimeout(finishTimeout);
+    };
   }, [isAnalyzing]);
 
   function selectOption(questionId: string, optionId: string, score: number) {
@@ -484,18 +502,18 @@ export default function QuizOfferView() {
 
             <div className="mb-8 text-center">
               {current.id === "kilos" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   Quantos quilos voce
                   <br />
                   <span className="text-emerald-600">deseja perder?</span>
                 </h1>
               ) : current.id === "idade" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   Vamos criar um Plano Personalizado de Emagrecimento com a Receita da Gelatina Emagrecedora,
                   focado nas suas necessidades.
                 </h1>
               ) : current.id === "area-gordura" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   Em qual área do seu corpo
                   <br />
                   você gostaria de <span className="text-emerald-600">reduzir</span>
@@ -503,73 +521,73 @@ export default function QuizOfferView() {
                   <span className="text-emerald-600">mais gordura?</span>
                 </h1>
               ) : current.id === "meta-quilos" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   Quantos quilos deseja perder?
                 </h1>
               ) : current.id === "prova-mariana" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   Veja o Resultado da Gelatina Emagrecedora na Vida da Mariana
                 </h1>
               ) : current.id === "nome" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   Vamos lá! Como posso te chamar?
                 </h1>
               ) : current.id === "tipo-corpo" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   Qual é o seu tipo de corpo atual?
                 </h1>
               ) : current.id === "impacto-vida" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   tete com o o seu peso afeta sua vida?
                 </h1>
               ) : current.id === "aparencia-fisica" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   Você se sente satisfeita com a sua aparência física atual?
                 </h1>
               ) : current.id === "dificuldade-peso" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   Você enfrenta alguma dificuldade no dia a dia devido ao peso?
                 </h1>
               ) : current.id === "impede-emagrecer" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   O que te impede de emagrecer?
                 </h1>
               ) : current.id === "explicacao-gelatina" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   Te entendemos!
                 </h1>
               ) : current.id === "beneficios" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   tete quais desses benefícios gostaria de ter?
                 </h1>
               ) : current.id === "depoimento-claudia" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   🔥 Histórias Reais de Transformação!
                 </h1>
               ) : current.id === "peso-atual" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   Qual é o seu peso atual?
                 </h1>
               ) : current.id === "altura" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   Qual é sua altura?
                 </h1>
               ) : current.id === "peso-desejado" ? (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   Qual é o seu peso desejado?
                 </h1>
               ) : current.id === "mensagem-receitinha" ? (
-                <h1 className="mx-auto max-w-[760px] text-balance text-[52px] font-semibold leading-[1.25] text-pg-ink sm:text-[56px]">
+                <h1 className="mx-auto max-w-[760px] text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   Fique tranquila! Assim que você finalizar sua avaliação, você vai receber a sua receitinha no seu
                   E-mail e no seu Whatsapp 💌
                 </h1>
               ) : (
-                <h1 className="text-balance text-[34px] font-semibold leading-tight text-pg-ink sm:text-[40px]">
+                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   {current.title}
                 </h1>
               )}
               {current.id === "area-gordura" || current.id === "nome" || current.id === "mensagem-receitinha" ? null : (
-                <p className="mt-2 text-[31px] underline underline-offset-2 text-pg-ink/85">
+                <p className="mt-2 text-base text-pg-ink/80 sm:text-lg">
                   {current.id === "goal"
                     ? "Escolha seus maiores interesses abaixo:"
                     : current.id === "kilos"
@@ -593,7 +611,7 @@ export default function QuizOfferView() {
                               : current.id === "beneficios"
                                 ? "Vamos personalizar a sua fórmula para maximizar seus resultados."
                               : current.id === "depoimento-claudia"
-                                ? "🔥  📍 Depoimento: Claudia - Porto Alegre, RS"
+                                ? "🔥  📍 Depoimento: Cláudia — Porto"
                                 : current.id === "peso-atual"
                                   ? "Estamos quase lá! Vamos ajustar seu plano de acordo com seu corpo."
                                   : current.id === "altura"
@@ -648,14 +666,14 @@ export default function QuizOfferView() {
                   <div className="flex items-center gap-3">
                     <div className="h-12 w-12 rounded-full bg-gradient-to-br from-pink-300 to-rose-200" />
                     <div>
-                      <p className="text-[34px] font-semibold leading-tight text-pg-ink">Claudia</p>
-                      <p className="text-[28px] text-pg-ink/70">Porto Alegre, RS</p>
+                      <p className="text-[34px] font-semibold leading-tight text-pg-ink">Cláudia</p>
+                      <p className="text-[28px] text-pg-ink/70">Porto</p>
                     </div>
                   </div>
                   <p className="mt-4 text-[33px] leading-tight text-pg-ink/90">
-                    Eu já tinha tentado de tudo para emagrecer, mas nada funcionava. Depois de incluir a Gelatina
-                    Emagrecedora na minha rotina, perdi 12kg sem mudar nada na minha alimentação! O mais incrível é
-                    que minha fome e ansiedade diminuíram naturalmente!
+                    Já tinha experimentado várias abordagens para perder peso e nunca conseguia manter resultados.
+                    Depois de incluir a Gelatina Emagrecedora na minha rotina, perdi 12 kg sem mudanças radicais e
+                    passei a sentir muito mais controlo do apetite e menos ansiedade ao longo do dia.
                   </p>
                   <p className="mt-3 text-[32px] text-yellow-500">★★★★★</p>
                 </div>
@@ -814,10 +832,15 @@ export default function QuizOfferView() {
                             ? "relative min-h-[250px] overflow-hidden rounded-2xl border-2 p-0 transition"
                             : "flex min-h-[108px] items-center gap-4 rounded-2xl border-2 px-4 py-3 text-left transition",
                         selected
-                          ? "border-emerald-600 bg-emerald-50"
+                          ? "border-emerald-600 bg-emerald-50 ring-2 ring-emerald-200"
                           : "border-emerald-600/90 bg-white hover:bg-emerald-50/50",
                       ].join(" ")}
                     >
+                      {selected ? (
+                        <span className="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-600 text-sm font-bold text-white">
+                          ✓
+                        </span>
+                      ) : null}
                       {current.id === "idade" ? (
                         <>
                           <div className="absolute inset-0 bg-gradient-to-b from-emerald-50 via-white to-white" />
@@ -833,7 +856,7 @@ export default function QuizOfferView() {
                                     : "bg-gradient-to-r from-blue-200 to-violet-200",
                             ].join(" ")}
                           />
-                          <span className="absolute bottom-5 left-1/2 -translate-x-1/2 text-[34px] font-medium text-pg-ink">
+                          <span className="absolute bottom-5 left-1/2 -translate-x-1/2 text-lg font-medium text-pg-ink sm:text-xl">
                             {option.label}
                           </span>
                         </>
@@ -850,7 +873,7 @@ export default function QuizOfferView() {
                                   : "bg-gradient-to-b from-red-300 to-red-400",
                             ].join(" ")}
                           />
-                          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[38px] font-medium text-pg-ink">
+                          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-xl font-medium text-pg-ink sm:text-2xl">
                             {option.label}
                           </span>
                         </>
@@ -868,7 +891,7 @@ export default function QuizOfferView() {
                                     ? "💔"
                                     : "👋"}
                           </span>
-                          <span className="absolute left-1/2 top-1/2 w-[72%] -translate-x-1/2 -translate-y-1/2 text-center text-[34px] font-medium leading-tight text-pg-ink">
+                          <span className="absolute left-1/2 top-1/2 w-[72%] -translate-x-1/2 -translate-y-1/2 text-center text-base font-medium leading-tight text-pg-ink sm:text-lg">
                             {option.label}
                           </span>
                         </>
@@ -884,14 +907,19 @@ export default function QuizOfferView() {
                                   ? "😪"
                                   : "🤦"}
                           </span>
-                          <span className="absolute left-1/2 top-1/2 w-[72%] -translate-x-1/2 -translate-y-1/2 text-center text-[34px] font-medium leading-tight text-pg-ink">
+                          <span className="absolute left-1/2 top-1/2 w-[72%] -translate-x-1/2 -translate-y-1/2 text-center text-base font-medium leading-tight text-pg-ink sm:text-lg">
                             {option.label}
                           </span>
                         </>
                       ) : current.id === "dificuldade-peso" ? (
                         <>
                           <div className="absolute inset-0 bg-white" />
-                          <span className="absolute left-8 top-1/2 h-9 w-9 -translate-y-1/2 rounded-full border-2 border-emerald-600" />
+                          <span
+                            className={[
+                              "absolute left-8 top-1/2 h-9 w-9 -translate-y-1/2 rounded-full border-2 border-emerald-600",
+                              selected ? "bg-emerald-600 shadow-[inset_0_0_0_4px_white]" : "bg-white",
+                            ].join(" ")}
+                          />
                           <span className="absolute left-1/2 top-10 -translate-x-1/2 text-6xl">
                             {option.id === "escadas"
                               ? "🤦"
@@ -905,7 +933,7 @@ export default function QuizOfferView() {
                                       ? "😶"
                                       : "✅"}
                           </span>
-                          <span className="absolute bottom-5 left-1/2 w-[80%] -translate-x-1/2 text-center text-[31px] font-medium leading-tight text-pg-ink">
+                          <span className="absolute bottom-5 left-1/2 w-[80%] -translate-x-1/2 text-center text-sm font-medium leading-tight text-pg-ink sm:text-base">
                             {option.label}
                           </span>
                         </>
@@ -914,15 +942,20 @@ export default function QuizOfferView() {
                           <div className="absolute inset-0 bg-white" />
                           <span className="absolute left-6 top-1/2 -translate-y-1/2 text-5xl">{option.icon ?? "•"}</span>
                           <div className="absolute left-24 right-4 top-1/2 -translate-y-1/2 text-left">
-                            <p className="text-[35px] font-semibold leading-tight text-pg-ink">{option.label}</p>
-                            <p className="mt-1 text-[29px] leading-tight text-pg-ink/70">{option.description}</p>
+                            <p className="text-base font-semibold leading-tight text-pg-ink sm:text-lg">{option.label}</p>
+                            <p className="mt-1 text-sm leading-tight text-pg-ink/70 sm:text-base">{option.description}</p>
                           </div>
                         </>
                       ) : current.id === "beneficios" ? (
                         <>
                           <div className="absolute inset-0 bg-white" />
-                          <span className="absolute left-8 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full border-2 border-emerald-600" />
-                          <span className="absolute left-1/2 top-1/2 w-[70%] -translate-x-1/2 -translate-y-1/2 text-center text-[34px] font-medium leading-tight text-pg-ink">
+                          <span
+                            className={[
+                              "absolute left-8 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full border-2 border-emerald-600",
+                              selected ? "bg-emerald-600 shadow-[inset_0_0_0_4px_white]" : "bg-white",
+                            ].join(" ")}
+                          />
+                          <span className="absolute left-24 right-5 top-1/2 -translate-y-1/2 text-left text-sm font-medium leading-tight text-pg-ink sm:text-base">
                             {option.label}
                           </span>
                         </>
@@ -937,7 +970,7 @@ export default function QuizOfferView() {
                                 : "bg-gradient-to-r from-yellow-100 to-neutral-200",
                             ].join(" ")}
                           />
-                          <span className="absolute bottom-5 left-1/2 w-[88%] -translate-x-1/2 text-center text-[31px] font-medium leading-tight text-pg-ink">
+                          <span className="absolute bottom-5 left-1/2 w-[88%] -translate-x-1/2 text-center text-sm font-medium leading-tight text-pg-ink sm:text-base">
                             {option.label}
                           </span>
                         </>
@@ -960,18 +993,23 @@ export default function QuizOfferView() {
                         <>
                           <div className="absolute inset-0 bg-white" />
                           <span className="absolute left-6 top-1/2 -translate-y-1/2 text-5xl">{option.icon ?? "•"}</span>
-                          <span className="absolute left-1/2 top-1/2 w-[72%] -translate-x-1/2 -translate-y-1/2 text-center text-[32px] font-medium leading-tight text-pg-ink">
+                          <span className="absolute left-1/2 top-1/2 w-[72%] -translate-x-1/2 -translate-y-1/2 text-center text-base font-medium leading-tight text-pg-ink sm:text-lg">
                             {option.label}
                           </span>
                         </>
                       ) : current.id === "fruta-preferida" ? (
                         <>
                           <div className="absolute inset-0 bg-white" />
-                          <span className="absolute left-4 top-1/2 h-9 w-9 -translate-y-1/2 rounded-full border-2 border-emerald-600" />
+                          <span
+                            className={[
+                              "absolute left-4 top-1/2 h-9 w-9 -translate-y-1/2 rounded-full border-2 border-emerald-600",
+                              selected ? "bg-emerald-600 shadow-[inset_0_0_0_4px_white]" : "bg-white",
+                            ].join(" ")}
+                          />
                           <span className="absolute left-1/2 top-[44%] -translate-x-1/2 -translate-y-1/2 text-6xl">
                             {option.icon ?? "•"}
                           </span>
-                          <span className="absolute bottom-5 left-1/2 -translate-x-1/2 text-[30px] font-medium leading-tight text-pg-ink">
+                          <span className="absolute bottom-5 left-1/2 -translate-x-1/2 text-base font-medium leading-tight text-pg-ink sm:text-lg">
                             {option.label}
                           </span>
                         </>
@@ -980,7 +1018,7 @@ export default function QuizOfferView() {
                           <div className="absolute inset-0 bg-white" />
                           <div className="absolute left-1/2 top-5 h-36 w-24 -translate-x-1/2 rounded-2xl bg-gradient-to-b from-amber-100 via-rose-100 to-red-200" />
                           <div className="absolute left-1/2 top-[112px] h-16 w-24 -translate-x-1/2 rounded-b-2xl bg-gradient-to-b from-red-300 to-red-400" />
-                          <span className="absolute bottom-6 left-1/2 -translate-x-1/2 text-[35px] font-medium text-pg-ink">
+                          <span className="absolute bottom-6 left-1/2 -translate-x-1/2 text-lg font-medium text-pg-ink sm:text-xl">
                             {option.label}
                           </span>
                         </>
@@ -988,7 +1026,7 @@ export default function QuizOfferView() {
                         <span
                           className={[
                             "h-7 w-7 rounded-full border-2 transition",
-                            selected ? "border-emerald-600 bg-emerald-600/10" : "border-emerald-600 bg-white",
+                            selected ? "border-emerald-600 bg-emerald-600 shadow-[inset_0_0_0_4px_white]" : "border-emerald-600 bg-white",
                           ].join(" ")}
                         />
                       )}
@@ -1006,7 +1044,7 @@ export default function QuizOfferView() {
                       current.id === "dificuldade-peso" ||
                       current.id === "impede-emagrecer" ||
                       current.id === "beneficios" ? null : (
-                        <span className="text-[30px] font-medium leading-snug text-pg-ink">{option.label}</span>
+                        <span className="text-base font-medium leading-snug text-pg-ink sm:text-lg">{option.label}</span>
                       )}
                     </button>
                   );
@@ -1045,7 +1083,7 @@ export default function QuizOfferView() {
                   (current.id === "altura" && !leadHeight.trim()) ||
                   (current.id === "peso-desejado" && !leadDesiredWeight.trim())
                 }
-                className="flex h-16 w-full items-center justify-center rounded-2xl bg-emerald-600 px-6 text-[35px] font-semibold text-white disabled:opacity-50"
+                className="flex h-14 w-full items-center justify-center rounded-2xl bg-emerald-600 px-6 text-lg font-semibold text-white disabled:opacity-50"
               >
                 {current.id === "nome" ? "Enviar" : isLastQuestion ? "Ver resultado" : "Continuar"}
               </button>
@@ -1063,8 +1101,11 @@ export default function QuizOfferView() {
 
             <div className="mx-auto mt-14 max-w-[640px]">
               <div className="h-8 rounded-full bg-neutral-100 p-1 shadow-inner">
-                <div className="flex h-full w-[99%] items-center justify-center rounded-full bg-emerald-600 text-[24px] font-black text-white">
-                  99%
+                <div
+                  className="flex h-full items-center justify-center rounded-full bg-emerald-600 text-[24px] font-black text-white transition-all duration-75"
+                  style={{ width: `${Math.max(analyzingProgress, 1)}%` }}
+                >
+                  {analyzingProgress}%
                 </div>
               </div>
             </div>
@@ -1159,41 +1200,41 @@ export default function QuizOfferView() {
         ) : (
           <section className="mx-auto max-w-[430px] space-y-4">
             <div className="text-center">
-              <p className="text-[36px] font-black leading-tight text-pg-ink">
+              <p className="text-2xl font-black leading-tight text-pg-ink sm:text-3xl">
                 tete, você está pronta
                 <br />
                 para <span className="text-emerald-500">transformar</span> seu <span className="text-emerald-500">corpo</span> e
                 sua <span className="text-emerald-500">saúde</span>?
               </p>
-              <p className="mt-2 text-[28px] text-pg-ink/85">Escolha a opção abaixo.</p>
+              <p className="mt-2 text-lg text-pg-ink/85">Escolha a opção abaixo.</p>
             </div>
 
             <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
               <div className="grid grid-cols-2 divide-x divide-neutral-200">
                 <div className="p-3 text-center">
-                  <p className="text-[26px] font-black">ANTES</p>
+                  <p className="text-xl font-black">ANTES</p>
                   <div className="mx-auto mt-2 h-48 w-36 rounded-xl bg-neutral-300" />
-                  <p className="mt-2 text-[24px] font-black leading-tight text-red-500">
+                  <p className="mt-2 text-base font-bold leading-tight text-red-500 sm:text-lg">
                     Esta é você com 143 kg, antes da Gelatina Emagrecedora
                   </p>
                   <div className="mt-3 h-3 rounded-full bg-red-400" />
-                  <p className="mt-2 rounded-xl bg-red-500 px-2 py-2 text-[22px] font-black text-white">Riscos de doenças Alto</p>
+                  <p className="mt-2 rounded-xl bg-red-500 px-2 py-2 text-sm font-black text-white sm:text-base">Riscos de doenças Alto</p>
                 </div>
                 <div className="p-3 text-center">
-                  <p className="text-[26px] font-black">DEPOIS</p>
+                  <p className="text-xl font-black">DEPOIS</p>
                   <div className="mx-auto mt-2 h-48 w-36 rounded-xl bg-neutral-200" />
-                  <p className="mt-2 text-[24px] font-black leading-tight text-emerald-600">
+                  <p className="mt-2 text-base font-bold leading-tight text-emerald-600 sm:text-lg">
                     E esta é você com 65 kg, depois de usar a gelatina ideal para o seu corpo
                   </p>
                   <div className="mt-3 h-3 rounded-full bg-emerald-500" />
-                  <p className="mt-2 rounded-xl bg-emerald-500 px-2 py-2 text-[22px] font-black text-white">Riscos de doenças Baixo</p>
+                  <p className="mt-2 rounded-xl bg-emerald-500 px-2 py-2 text-sm font-black text-white sm:text-base">Riscos de doenças Baixo</p>
                 </div>
               </div>
             </div>
 
             <div className="text-center">
-              <p className="text-[42px] font-black text-pg-ink">Como funciona o Plano?</p>
-              <p className="mt-2 text-[31px] leading-tight text-pg-ink">
+              <p className="text-2xl font-black text-pg-ink sm:text-3xl">Como funciona o Plano?</p>
+              <p className="mt-2 text-base leading-relaxed text-pg-ink sm:text-lg">
                 Com base nas suas informações pessoais e objetivos, criamos um plano 100% personalizado para você usar
                 os ingredientes ideais para você. Nossa abordagem estratégica foi feita para que você consiga
                 potencializar sua perda de peso em 4 semanas, respeitando seu estilo de vida, sua rotina e o que você
@@ -1202,8 +1243,8 @@ export default function QuizOfferView() {
             </div>
 
             <div className="rounded-2xl border border-emerald-100 bg-[#f2ffe9] p-4">
-              <p className="text-center text-[38px] font-black text-pg-ink">SEU PLANO INCLUI</p>
-              <div className="mt-3 space-y-3 text-[30px] leading-tight text-pg-ink">
+              <p className="text-center text-2xl font-black text-pg-ink sm:text-3xl">SEU PLANO INCLUI</p>
+              <div className="mt-3 space-y-3 text-base leading-relaxed text-pg-ink sm:text-lg">
                 <p>✅ <span className="font-black">Quais os ingredientes ideais para o seu corpo:</span> Baseado nas pesquisas mais recentes de universidades famosas como Havard, desenvolvemos o Protocolo Rotina da Gelatina Bariátrica, a forma mais eficaz de usar os melhores chás para perder peso de acordo com o seu corpo sem que você perca músculos ou sinta muita fome.</p>
                 <p>✅ <span className="font-black">Definição de metas diárias:</span> para você se manter no caminho certo</p>
                 <p>✅ <span className="font-black">Planilha de acompanhamento:</span> Saiba exatamente quanto você está evoluindo.</p>
@@ -1211,27 +1252,27 @@ export default function QuizOfferView() {
               </div>
             </div>
 
-            <p className="text-center text-[40px] font-black leading-tight text-pg-ink">
+            <p className="text-center text-2xl font-black leading-tight text-pg-ink sm:text-3xl">
               Ao Garantir Sua Rotina da Gelatina Bariátrica, <span className="text-emerald-500">Você Recebe Todos os Bônus de Presente!</span>
             </p>
 
             <div className="space-y-2">
-              <div className="rounded-2xl bg-[#4caf50] p-3 text-[30px] font-black leading-tight text-white">Potencialize a Queima de Gordura</div>
-              <div className="rounded-2xl bg-[#d97706] p-3 text-[30px] font-black leading-tight text-white">Desinchar em 7 Dias</div>
-              <div className="rounded-2xl bg-[#a855f7] p-3 text-[30px] font-black leading-tight text-white">Anti-Efeito Sanfona</div>
-              <div className="rounded-2xl bg-[#e11d48] p-3 text-[30px] font-black leading-tight text-white">Metabolismo PRO 5x</div>
+              <div className="rounded-2xl bg-[#4caf50] p-3 text-base font-black leading-tight text-white sm:text-lg">Potencialize a Queima de Gordura</div>
+              <div className="rounded-2xl bg-[#d97706] p-3 text-base font-black leading-tight text-white sm:text-lg">Desinchar em 7 Dias</div>
+              <div className="rounded-2xl bg-[#a855f7] p-3 text-base font-black leading-tight text-white sm:text-lg">Anti-Efeito Sanfona</div>
+              <div className="rounded-2xl bg-[#e11d48] p-3 text-base font-black leading-tight text-white sm:text-lg">Metabolismo PRO 5x</div>
             </div>
 
             <div className="rounded-2xl border-2 border-emerald-600 bg-[#fffdf4] p-4 text-center">
-              <p className="text-[44px] font-black text-emerald-700">GELATINA BARIÁTRICA</p>
-              <p className="mt-2 text-[30px] font-black text-pg-ink">Preço atualizado no checkout</p>
+              <p className="text-2xl font-black text-emerald-700 sm:text-3xl">GELATINA BARIÁTRICA</p>
+              <p className="mt-2 text-base font-black text-pg-ink sm:text-lg">Preço atualizado no checkout</p>
             </div>
 
             <div className="rounded-2xl border border-neutral-200 bg-white px-3 py-2 text-center text-sm text-pg-ink/75">
               Pagamento seguro no checkout oficial da Stripe.
             </div>
 
-            <p className="text-center text-[42px] font-black leading-tight text-pg-ink">
+            <p className="text-center text-2xl font-black leading-tight text-pg-ink sm:text-3xl">
               Quem Usa <span className="text-emerald-500">Tem Resultado</span> 😉👇
             </p>
 
@@ -1240,8 +1281,8 @@ export default function QuizOfferView() {
             </div>
 
             <div className="rounded-2xl border border-amber-200 bg-white p-4 text-center">
-              <p className="text-[40px] font-black text-pg-ink">GARANTIA 30 DIAS</p>
-              <p className="mt-2 text-[31px] leading-tight text-pg-ink">
+              <p className="text-2xl font-black text-pg-ink sm:text-3xl">GARANTIA 30 DIAS</p>
+              <p className="mt-2 text-base leading-relaxed text-pg-ink sm:text-lg">
                 A compra deste material é totalmente sem risco para você.
                 <br />
                 <br />
@@ -1251,9 +1292,9 @@ export default function QuizOfferView() {
             </div>
 
             <div className="rounded-2xl border border-neutral-200 bg-white p-4">
-              <p className="text-[32px] font-black text-pg-ink">Isabela Soares</p>
-              <p className="text-[26px] text-pg-ink/70">São Paulo, SP</p>
-              <p className="mt-2 text-[29px] leading-tight text-pg-ink">
+              <p className="text-xl font-black text-pg-ink">Isabela Soares</p>
+              <p className="text-sm text-pg-ink/70 sm:text-base">São Paulo, SP</p>
+              <p className="mt-2 text-base leading-relaxed text-pg-ink sm:text-lg">
                 Eu literalmente estou sem palavras! Olha isso ai gente! Foram 2 meses e meio seguindo sem errar,
                 gente é incrível isso, não esperava, tô passada real! 😱😅
               </p>
@@ -1261,9 +1302,9 @@ export default function QuizOfferView() {
             </div>
 
             <div className="rounded-2xl border border-neutral-200 bg-white p-4">
-              <p className="text-[32px] font-black text-pg-ink">Bruna Gonçalves</p>
-              <p className="text-[26px] text-pg-ink/70">Itajaí, SC</p>
-              <p className="mt-2 text-[29px] leading-tight text-pg-ink">
+              <p className="text-xl font-black text-pg-ink">Bruna Gonçalves</p>
+              <p className="text-sm text-pg-ink/70 sm:text-base">Itajaí, SC</p>
+              <p className="mt-2 text-base leading-relaxed text-pg-ink sm:text-lg">
                 Só eu sei o quanto eu sofri tentando emagrecer. Isso aqui foi único eu jurava que era balela, mas ta
                 ai o resultado, certeza que logo as canetas caem o preço, ninguem vai querer ficar se furando, isso
                 aqui é divino kkkk 🤯💃
@@ -1273,8 +1314,8 @@ export default function QuizOfferView() {
 
             <div className="rounded-2xl border-2 border-emerald-500 bg-white p-3">
               <div className="flex items-center justify-between">
-                <p className="text-[28px] font-black leading-tight text-pg-ink">GELATINA BARIÁTRICA</p>
-                <p className="rounded-xl bg-[#eef7f2] px-4 py-2 text-[44px] font-black text-pg-ink">R$37,90</p>
+                <p className="text-lg font-black leading-tight text-pg-ink sm:text-xl">GELATINA BARIÁTRICA</p>
+                <p className="rounded-xl bg-[#eef7f2] px-4 py-2 text-2xl font-black text-pg-ink sm:text-3xl">R$37,90</p>
               </div>
             </div>
 

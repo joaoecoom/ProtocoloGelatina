@@ -46,6 +46,7 @@ export async function POST(request: Request) {
     success_url: `${appUrl}/quiz?checkout=success`,
     cancel_url: `${appUrl}/quiz?checkout=cancel`,
     subscription_data: {
+      trial_period_days: Math.max(1, planMeta.trialDays),
       metadata: {
         plan,
         billingModel: "intro_once_then_monthly",

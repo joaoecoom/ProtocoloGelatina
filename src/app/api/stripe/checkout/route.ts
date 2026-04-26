@@ -35,7 +35,7 @@ export async function POST(request: Request) {
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
-    // Item recorrente mensal + item único de entrada cobrado só no primeiro pagamento.
+    // Cobra só a entrada agora (item one-time) e inicia subscrição mensal após o trial.
     line_items: [
       { price: priceId, quantity: 1 },
       {
@@ -54,6 +54,7 @@ export async function POST(request: Request) {
     customer_email: user.email,
     client_reference_id: user.id,
     subscription_data: {
+      trial_period_days: Math.max(1, planMeta.trialDays),
       metadata: {
         userId: user.id,
         plan,
