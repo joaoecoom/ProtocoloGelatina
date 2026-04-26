@@ -274,7 +274,7 @@ export default async function QuizDashboardPage({
       SELECT
         COUNT(*) FILTER (WHERE event_name IN ('page_view', 'landing_view'))::int AS visits,
         COUNT(DISTINCT COALESCE(session_id, anonymous_id, visitor_id))::int AS sessions,
-        COUNT(DISTINCT lead_id)::int AS leads,
+        COUNT(DISTINCT COALESCE(lead_id, session_id, anonymous_id, visitor_id))::int AS leads,
         COUNT(*) FILTER (WHERE event_name = 'payment_success')::int AS sales,
         COALESCE(SUM(revenue) FILTER (WHERE event_name = 'payment_success'), 0)::numeric(14,2) AS revenue,
         CASE
@@ -300,7 +300,7 @@ export default async function QuizDashboardPage({
         COALESCE(utm_source, 'direct') AS utm_source,
         COUNT(*)::int AS events,
         COUNT(DISTINCT COALESCE(session_id, anonymous_id, visitor_id))::int AS sessions,
-        COUNT(DISTINCT lead_id)::int AS leads,
+        COUNT(DISTINCT COALESCE(lead_id, session_id, anonymous_id, visitor_id))::int AS leads,
         COALESCE(SUM(revenue), 0)::numeric(14,2) AS revenue
       FROM scoped
       GROUP BY DATE("timestamp"), COALESCE(funnel_id, 'unknown'), COALESCE(utm_source, 'direct')
