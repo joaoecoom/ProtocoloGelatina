@@ -416,31 +416,11 @@ export default function QuizOfferView() {
     setIsStartingCheckout(true);
     setCheckoutError(null);
     try {
-      const response = await fetch("/api/stripe/checkout", {
+      const response = await fetch("/api/stripe/checkout-guest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan: "FRONT" }),
       });
-
-      if (response.status === 401) {
-        const guestResponse = await fetch("/api/stripe/checkout-guest", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ plan: "FRONT" }),
-        });
-        if (!guestResponse.ok) {
-          const guestData = (await guestResponse.json().catch(() => ({}))) as { error?: string };
-          setCheckoutError(guestData.error ?? "Nao foi possivel abrir o checkout.");
-          return;
-        }
-        const guestData = (await guestResponse.json()) as { url?: string };
-        if (!guestData.url) {
-          setCheckoutError("Sessao de checkout invalida.");
-          return;
-        }
-        window.location.assign(guestData.url);
-        return;
-      }
 
       if (!response.ok) {
         const data = (await response.json().catch(() => ({}))) as { error?: string };
