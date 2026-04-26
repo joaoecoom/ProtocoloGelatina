@@ -53,7 +53,10 @@ function readState(): AttributionState {
     const raw = window.localStorage.getItem(ATTRIBUTION_KEY);
     if (!raw) return { touchpoints: [] };
     const parsed = JSON.parse(raw) as AttributionState;
-    return { touchpoints: [], ...parsed };
+    return {
+      ...parsed,
+      touchpoints: Array.isArray(parsed.touchpoints) ? parsed.touchpoints : [],
+    };
   } catch {
     return { touchpoints: [] };
   }

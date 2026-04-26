@@ -10,37 +10,41 @@ import {
 } from "./constants";
 import { BaseEventSchema } from "./base-event.schema";
 
-export const TrafficEventSchema = BaseEventSchema.refine((d) => TRAFFIC_EVENT_NAMES.includes(d.event_name), {
+function hasCategoryEvent(names: readonly string[], eventName: string) {
+  return names.includes(eventName);
+}
+
+export const TrafficEventSchema = BaseEventSchema.refine((d) => hasCategoryEvent(TRAFFIC_EVENT_NAMES, d.event_name), {
   message: "Event does not belong to traffic category.",
 });
 
-export const QuizEventSchema = BaseEventSchema.refine((d) => QUIZ_EVENT_NAMES.includes(d.event_name), {
+export const QuizEventSchema = BaseEventSchema.refine((d) => hasCategoryEvent(QUIZ_EVENT_NAMES, d.event_name), {
   message: "Event does not belong to quiz category.",
 });
 
-export const VSLEventSchema = BaseEventSchema.refine((d) => VSL_EVENT_NAMES.includes(d.event_name), {
+export const VSLEventSchema = BaseEventSchema.refine((d) => hasCategoryEvent(VSL_EVENT_NAMES, d.event_name), {
   message: "Event does not belong to VSL category.",
 });
 
-export const CheckoutEventSchema = BaseEventSchema.refine((d) => CHECKOUT_EVENT_NAMES.includes(d.event_name), {
+export const CheckoutEventSchema = BaseEventSchema.refine((d) => hasCategoryEvent(CHECKOUT_EVENT_NAMES, d.event_name), {
   message: "Event does not belong to checkout category.",
 });
 
 export const FinancialEventSchema = BaseEventSchema.refine(
-  (d) => FINANCIAL_CATEGORY_EVENT_NAMES.includes(d.event_name),
+  (d) => hasCategoryEvent(FINANCIAL_CATEGORY_EVENT_NAMES, d.event_name),
   {
     message: "Event does not belong to financial category.",
   },
 );
 
 export const UpsellDownsellEventSchema = BaseEventSchema.refine(
-  (d) => UPSELL_DOWNSELL_EVENT_NAMES.includes(d.event_name),
+  (d) => hasCategoryEvent(UPSELL_DOWNSELL_EVENT_NAMES, d.event_name),
   {
     message: "Event does not belong to upsell/downsell category.",
   },
 );
 
-export const AppEventSchema = BaseEventSchema.refine((d) => APP_EVENT_NAMES.includes(d.event_name), {
+export const AppEventSchema = BaseEventSchema.refine((d) => hasCategoryEvent(APP_EVENT_NAMES, d.event_name), {
   message: "Event does not belong to app category.",
 });
 

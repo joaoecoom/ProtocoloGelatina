@@ -1,4 +1,5 @@
 import type { PlanId } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -89,7 +90,7 @@ async function persistTrackingEvent(raw: unknown) {
         currency: event.currency ?? null,
         schemaName: event.schema_name,
         schemaVersion: event.schema_version,
-        metadataJson: event.metadata_json ?? {},
+        metadataJson: (event.metadata_json ?? {}) as Prisma.InputJsonValue,
       },
     })
     .catch(() => undefined);
@@ -297,7 +298,7 @@ export async function POST(request: Request) {
           anonymous_id: tracking.anonymous_id,
           lead_id: tracking.lead_id,
           user_id: tracking.user_id,
-          order_id: invoice.payment_intent ? String(invoice.payment_intent) : invoice.id,
+          order_id: invoice.id,
           funnel_id: tracking.funnel_id,
           step_id: tracking.step_id,
           utm_source: tracking.utm_source,
@@ -313,7 +314,6 @@ export async function POST(request: Request) {
           metadata_json: {
             stripe_event_id: event.id,
             stripe_invoice_id: invoice.id,
-            stripe_subscription_id: typeof invoice.subscription === "string" ? invoice.subscription : undefined,
             source_type: "invoice.paid",
           },
         });
@@ -334,13 +334,12 @@ export async function POST(request: Request) {
           anonymous_id: tracking.anonymous_id,
           lead_id: tracking.lead_id,
           user_id: tracking.user_id,
-          order_id: invoice.payment_intent ? String(invoice.payment_intent) : invoice.id,
+          order_id: invoice.id,
           funnel_id: tracking.funnel_id,
           step_id: tracking.step_id,
           metadata_json: {
             stripe_event_id: event.id,
             stripe_invoice_id: invoice.id,
-            stripe_subscription_id: typeof invoice.subscription === "string" ? invoice.subscription : undefined,
             source_type: "invoice.payment_failed",
           },
         });

@@ -40,11 +40,14 @@ export async function POST(request: Request) {
 
   const asBatch = IngestEventsBatchSchema.safeParse(json);
   const asSingle = IngestEventSchema.safeParse(json);
-  if (!asBatch.success && !asSingle.success) {
+  let events: Array<(typeof IngestEventSchema)["_output"]>;
+  if (asBatch.success) {
+    events = asBatch.data.events;
+  } else if (asSingle.success) {
+    events = [asSingle.data];
+  } else {
     return NextResponse.json({ error: "Invalid event payload." }, { status: 400 });
   }
-
-  const events = asBatch.success ? asBatch.data.events : [asSingle.data];
   const hdrs = await headers();
   const userAgent = hdrs.get("user-agent");
   const referrer = hdrs.get("referer");
@@ -86,7 +89,7 @@ export async function POST(request: Request) {
       currency: event.currency ?? null,
       schemaName: event.schema_name,
       schemaVersion: event.schema_version,
-      metadataJson: event.metadata_json ?? {},
+      metadataJson: (event.metadata_json ?? {}) as Prisma.InputJsonValue,
     }));
 
     const result = await prisma.event.createMany({

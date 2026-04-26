@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -147,7 +148,7 @@ export async function POST(request: Request) {
         ttclid: eventPayload.data.ttclid ?? null,
         schemaName: eventPayload.data.schema_name,
         schemaVersion: eventPayload.data.schema_version,
-        metadataJson: eventPayload.data.metadata_json ?? {},
+        metadataJson: (eventPayload.data.metadata_json ?? {}) as Prisma.InputJsonValue,
       },
     }).catch(() => undefined);
   }

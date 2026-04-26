@@ -76,7 +76,7 @@ export async function track(input: TrackInput) {
       ...(payload.metadata_json ?? {}),
       attribution: context.attribution,
     },
-  } satisfies IngestEvent;
+  };
 
   const parsed = IngestEventSchema.safeParse(event);
   if (!parsed.success) {
@@ -113,7 +113,7 @@ export function trackWithBeacon(input: Omit<TrackInput, "keepalive">) {
       ...(input.metadata_json ?? {}),
       attribution: context.attribution,
     },
-  } satisfies IngestEvent;
+  };
 
   const parsed = IngestEventSchema.safeParse(event);
   if (!parsed.success) return false;
