@@ -108,3 +108,15 @@ export const protocolPlansStateSchema = z.object({
   activePlans: z.array(storedActivePlanSchema).max(20),
   checkins: z.record(z.string().max(120), z.literal(true)).optional(),
 });
+
+export const quizMetricEventSchema = z.object({
+  sessionId: z.string().min(8).max(80),
+  eventType: z.string().min(2).max(64),
+  step: z.number().int().min(0).max(200).optional(),
+  stepId: z.string().min(1).max(80).optional(),
+  questionId: z.string().min(1).max(80).optional(),
+  optionId: z.string().min(1).max(120).optional(),
+  buttonId: z.string().min(1).max(120).optional(),
+  path: z.string().min(1).max(200).optional(),
+  meta: z.record(z.string(), z.unknown()).optional(),
+});

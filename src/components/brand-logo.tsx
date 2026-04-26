@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { cn } from "@/lib/cn";
 
-const SRC = "/brand/protocolo-gelatina-logo.png";
+const SRC = "/brand/protocolo-gelatina-logo-v3.png";
 
 export type BrandLogoVariant = "hero" | "header" | "auth";
 
@@ -27,7 +27,7 @@ const bySizes: Record<BrandLogoVariant, string> = {
 };
 
 /**
- * Marca "PROTOCOLO GELATINA INTELIGENTE" (asset em `/public/brand/protocolo-gelatina-logo.png`).
+ * Marca "PROTOCOLO GELATINA INTELIGENTE" (asset em `/public/brand/protocolo-gelatina-logo-v3.png`).
  */
 export function BrandLogo({ variant, className, priority }: Props) {
   return (

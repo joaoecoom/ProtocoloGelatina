@@ -28,7 +28,10 @@ export function LoginForm() {
       return;
     }
     const data = await res.json();
-    const nextPath = data.user.onboardingCompleted ? "/dashboard" : "/onboarding";
+    const requestedNext = new URLSearchParams(window.location.search).get("next");
+    const safeNext =
+      requestedNext?.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : null;
+    const nextPath = safeNext ?? (data.user.onboardingCompleted ? "/dashboard" : "/onboarding");
     router.push(nextPath);
     router.refresh();
     // Fallback para browsers embebidos onde o router client pode falhar.

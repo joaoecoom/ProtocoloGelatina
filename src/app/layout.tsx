@@ -32,11 +32,11 @@ export const metadata: Metadata = {
     description:
       "O método simples que faz o teu corpo voltar a queimar gordura — sem dietas extremas.",
     type: "website",
-    images: ["/brand/protocolo-gelatina-logo.png"],
+    images: ["/brand/protocolo-gelatina-logo-v3.png"],
   },
   twitter: {
     card: "summary_large_image",
-    images: ["/brand/protocolo-gelatina-logo.png"],
+    images: ["/brand/protocolo-gelatina-logo-v3.png"],
   },
 };
 

@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { BrandLogo } from "@/components/brand-logo";
+import { getTrackingContext, initTrackingContext, track, trackWithBeacon } from "@/lib/tracking";
 
 type QuizQuestion = {
   id: string;
@@ -255,23 +257,18 @@ const QUESTIONS: QuizQuestion[] = [
   },
 ];
 
-function getResultMessage(score: number) {
-  if (score >= 12) {
-    return {
-      level: "Perfil ideal para aceleração",
-      text: "Tens tudo para ter uma transformação rápida com uma rotina simples e guiada.",
-    };
-  }
-  if (score >= 8) {
-    return {
-      level: "Perfil com alto potencial",
-      text: "Com estrutura diária e lembretes certos, tens alta probabilidade de manter consistência.",
-    };
-  }
-  return {
-    level: "Perfil em construção",
-    text: "Um plano curto e objetivo vai ajudar a criar ritmo sem pressão.",
-  };
+function getStepId(params: {
+  currentId?: string;
+  isIntro: boolean;
+  isAnalyzing: boolean;
+  isDone: boolean;
+  showFinalSalesStep: boolean;
+}) {
+  if (params.isIntro) return "intro";
+  if (params.currentId) return params.currentId;
+  if (params.isAnalyzing) return "analyzing";
+  if (!params.isDone) return "step-unknown";
+  return params.showFinalSalesStep ? "final-sales" : "pre-sales";
 }
 
 export default function QuizOfferView() {
@@ -285,6 +282,7 @@ export default function QuizOfferView() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [showFinalSalesStep, setShowFinalSalesStep] = useState(false);
   const [analyzingProgress, setAnalyzingProgress] = useState(1);
+  const hasTrackedLandingRef = useRef(false);
 
   const currentQuestionIndex = step - 1;
   const current = currentQuestionIndex >= 0 ? QUESTIONS[currentQuestionIndex] : undefined;
@@ -299,14 +297,70 @@ export default function QuizOfferView() {
     () => Object.values(answers).reduce((acc, row) => acc + row.score, 0),
     [answers],
   );
-  const result = getResultMessage(totalScore);
   const adherenceScore = Math.max(72, Math.min(97, 80 + Math.round((totalScore / Math.max(QUESTIONS.length, 1)) * 4)));
+  const currentStepId = getStepId({
+    currentId: current?.id,
+    isIntro,
+    isAnalyzing,
+    isDone,
+    showFinalSalesStep,
+  });
 
   useEffect(() => {
-    if (!isAnalyzing) {
-      setAnalyzingProgress(1);
-      return;
+    if (hasTrackedLandingRef.current) return;
+    hasTrackedLandingRef.current = true;
+    initTrackingContext();
+    void track({
+      event_name: "page_view",
+      page_type: "quiz",
+      funnel_id: "quiz_gelatina",
+      metadata_json: { path: "/quiz" },
+    });
+    void track({
+      event_name: "landing_view",
+      page_type: "quiz",
+      funnel_id: "quiz_gelatina",
+      metadata_json: { path: "/quiz" },
+    });
+  }, []);
+
+  useEffect(() => {
+    if (isAnalyzing || isDone) return;
+    void track({
+      event_name: "step_viewed",
+      funnel_id: "quiz_gelatina",
+      step_id: currentStepId,
+      page_type: "quiz",
+      metadata_json: { step: step, question_id: current?.id ?? null },
+    });
+  }, [isAnalyzing, isDone, currentStepId, step, current?.id]);
+
+  useEffect(() => {
+    function sendExitMetric() {
+      if (isDone) return;
+      trackWithBeacon({
+        event_name: "quiz_abandoned",
+        funnel_id: "quiz_gelatina",
+        step_id: currentStepId,
+        page_type: "quiz",
+        metadata_json: { step, reason: "page_unload_or_hidden" },
+      });
     }
+
+    function onVisibilityChange() {
+      if (document.visibilityState === "hidden") sendExitMetric();
+    }
+
+    window.addEventListener("beforeunload", sendExitMetric);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("beforeunload", sendExitMetric);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [step, currentStepId, isDone]);
+
+  useEffect(() => {
+    if (!isAnalyzing) return;
 
     let finishTimeout: number | undefined;
     const interval = window.setInterval(() => {
@@ -329,10 +383,29 @@ export default function QuizOfferView() {
 
   function selectOption(questionId: string, optionId: string, score: number) {
     setAnswers((prev) => ({ ...prev, [questionId]: { optionId, score } }));
+    void track({
+      event_name: "step_answered",
+      funnel_id: "quiz_gelatina",
+      step_id: questionId,
+      page_type: "quiz",
+      metadata_json: {
+        question_id: questionId,
+        answer_id: optionId,
+        answer_label: current?.options.find((opt) => opt.id === optionId)?.label ?? optionId,
+        score,
+      },
+    });
   }
 
   function next() {
     if (isIntro) {
+      void track({
+        event_name: "quiz_started",
+        funnel_id: "quiz_gelatina",
+        step_id: "intro",
+        page_type: "quiz",
+        metadata_json: { cta: "start_quiz" },
+      });
       setStep(1);
       return;
     }
@@ -407,25 +480,29 @@ export default function QuizOfferView() {
     }
     if (!answers[current.id]) return;
     if (isLastQuestion) {
+      setAnalyzingProgress(1);
+      void track({
+        event_name: "quiz_completed",
+        funnel_id: "quiz_gelatina",
+        step_id: current.id,
+        page_type: "quiz",
+        metadata_json: { answered_steps: Object.keys(answers).length + 1 },
+      });
       setStep(QUESTIONS.length + 1);
       return;
     }
     setStep((s) => s + 1);
   }
 
-  function prev() {
-    setStep((s) => Math.max(0, s - 1));
-  }
-
-  function restart() {
-    setAnswers({});
-    setStep(0);
-    setCheckoutError(null);
-    setShowFinalSalesStep(false);
-  }
-
   function goToFinalSalesStep() {
     setCheckoutError(null);
+    void track({
+      event_name: "result_cta_clicked",
+      funnel_id: "quiz_gelatina",
+      step_id: currentStepId,
+      page_type: "quiz",
+      metadata_json: { cta: "go_to_final_sales" },
+    });
     setShowFinalSalesStep(true);
   }
 
@@ -433,11 +510,36 @@ export default function QuizOfferView() {
     if (isStartingCheckout) return;
     setIsStartingCheckout(true);
     setCheckoutError(null);
+    void track({
+      event_name: "checkout_started",
+      funnel_id: "quiz_gelatina",
+      step_id: currentStepId,
+      page_type: "quiz",
+      metadata_json: { plan: "FRONT", source: "quiz_offer_cta" },
+    });
+    const trackingContext = getTrackingContext();
     try {
       const response = await fetch("/api/stripe/checkout-guest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: "FRONT" }),
+        body: JSON.stringify({
+          plan: "FRONT",
+          tracking: {
+            session_id: trackingContext.sessionId,
+            visitor_id: trackingContext.visitorId,
+            anonymous_id: trackingContext.anonymousId,
+            funnel_id: "quiz_gelatina",
+            step_id: currentStepId,
+            utm_source: trackingContext.utm_source,
+            utm_medium: trackingContext.utm_medium,
+            utm_campaign: trackingContext.utm_campaign,
+            utm_content: trackingContext.utm_content,
+            utm_term: trackingContext.utm_term,
+            fbclid: trackingContext.fbclid,
+            gclid: trackingContext.gclid,
+            ttclid: trackingContext.ttclid,
+          },
+        }),
       });
 
       if (!response.ok) {
@@ -451,7 +553,6 @@ export default function QuizOfferView() {
         setCheckoutError("Sessao de checkout invalida.");
         return;
       }
-
       window.location.assign(data.url);
     } catch {
       setCheckoutError("Falha ao iniciar checkout. Tenta novamente.");
@@ -471,7 +572,14 @@ export default function QuizOfferView() {
           <section className="mx-auto max-w-[860px]">
             <div className="rounded-3xl border border-pg-forest/10 bg-white p-6 sm:p-8">
               <div className="mx-auto w-full max-w-[560px] rounded-2xl border border-pg-forest/10 bg-gradient-to-b from-rose-50 via-white to-emerald-50 px-6 py-10">
-                <BrandLogo variant="hero" className="mx-auto w-full max-w-[420px]" priority />
+                <Image
+                  src="/quiz-main-v3.png"
+                  alt="Gelatina Inteligente"
+                  width={1200}
+                  height={1200}
+                  priority
+                  className="mx-auto h-auto w-full max-w-[520px] rounded-xl object-contain"
+                />
               </div>
             </div>
 

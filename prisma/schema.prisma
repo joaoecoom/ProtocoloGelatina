@@ -141,3 +141,70 @@ model ChatMessage {
   text      String   @db.VarChar(4000)
   createdAt DateTime @default(now())
 }
+
+/// Eventos de funil do quiz para métricas agregadas (entrada, cliques, drop-off, checkout).
+model QuizMetricEvent {
+  id         String   @id @default(cuid())
+  sessionId  String   @db.VarChar(80)
+  eventType  String   @db.VarChar(64)
+  step       Int?
+  stepId     String?  @db.VarChar(80)
+  questionId String?  @db.VarChar(80)
+  optionId   String?  @db.VarChar(120)
+  buttonId   String?  @db.VarChar(120)
+  path       String?  @db.VarChar(200)
+  meta       Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([eventType, createdAt])
+  @@index([sessionId, createdAt])
+  @@index([stepId, createdAt])
+}
+
+model Event {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId       String   @unique @map("event_id")
+  eventName     String   @map("event_name")
+  eventVersion  Int      @default(1) @map("event_version")
+  timestamp     DateTime @default(now())
+  sessionId     String?  @map("session_id")
+  visitorId     String?  @map("visitor_id")
+  anonymousId   String?  @map("anonymous_id")
+  leadId        String?  @map("lead_id")
+  userId        String?  @map("user_id")
+  orderId       String?  @map("order_id")
+  funnelId      String?  @map("funnel_id")
+  stepId        String?  @map("step_id")
+  pageType      String?  @map("page_type")
+  utmSource     String?  @map("utm_source")
+  utmMedium     String?  @map("utm_medium")
+  utmCampaign   String?  @map("utm_campaign")
+  utmContent    String?  @map("utm_content")
+  utmTerm       String?  @map("utm_term")
+  fbclid        String?
+  gclid         String?
+  ttclid        String?
+  ip            String?
+  country       String?
+  device        String?
+  browser       String?
+  os            String?
+  referrer      String?
+  revenue       Decimal? @db.Decimal(14, 2)
+  currency      String?
+  schemaName    String   @default("core_event") @map("schema_name")
+  schemaVersion Int      @default(1) @map("schema_version")
+  metadataJson  Json     @default("{}") @map("metadata_json")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([eventName], map: "idx_events_event_name")
+  @@index([timestamp], map: "idx_events_timestamp")
+  @@index([sessionId], map: "idx_events_session_id")
+  @@index([leadId], map: "idx_events_lead_id")
+  @@index([orderId], map: "idx_events_order_id")
+  @@index([funnelId, stepId], map: "idx_events_funnel_step")
+  @@index([anonymousId], map: "idx_events_anonymous_id")
+  @@index([visitorId], map: "idx_events_visitor_id")
+  @@map("events")
+}
