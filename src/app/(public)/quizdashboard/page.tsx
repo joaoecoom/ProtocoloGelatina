@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
@@ -6,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 
 const ADMIN_EMAIL = "geral.joaoecoom@gmail.com";
+const DASHBOARD_ACCESS_COOKIE = "quizdashboard_access";
 
 type TotalsRow = {
   visits: number;
@@ -98,12 +100,72 @@ const QUIZ_STEP_COLUMNS = [
   "final-sales",
 ] as const;
 
+const STEP_LABELS: Record<(typeof QUIZ_STEP_COLUMNS)[number], string> = {
+  intro: "Intro",
+  goal: "Objetivo",
+  kilos: "Quilos a Perder",
+  sexo: "Sexo",
+  "area-gordura": "Area de Gordura",
+  idade: "Idade",
+  "meta-quilos": "Meta em Quilos",
+  "prova-mariana": "Prova Mariana",
+  nome: "Nome",
+  "tipo-corpo": "Tipo de Corpo",
+  "impacto-vida": "Impacto na Vida",
+  "aparencia-fisica": "Aparencia Fisica",
+  "dificuldade-peso": "Dificuldade com Peso",
+  "impede-emagrecer": "O que Impede Emagrecer",
+  "explicacao-gelatina": "Explicacao Gelatina",
+  beneficios: "Beneficios",
+  "depoimento-claudia": "Depoimento Claudia",
+  "peso-atual": "Peso Atual",
+  altura: "Altura",
+  "peso-desejado": "Peso Desejado",
+  tempo: "Tempo para Objetivo",
+  "sono-horas": "Horas de Sono",
+  hidratacao: "Hidratacao",
+  "fruta-preferida": "Fruta Preferida",
+  "corpo-sonhos": "Corpo de Sonho",
+  "mensagem-receitinha": "Mensagem Receitinha",
+  apoio: "Apoio",
+  "final-sales": "Oferta Final",
+};
+
+function getStepLabel(stepId: string) {
+  return (STEP_LABELS as Record<string, string>)[stepId] ?? stepId;
+}
+
+function getStepOrder(stepId: string) {
+  const idx = QUIZ_STEP_COLUMNS.findIndex((s) => s === stepId);
+  return idx === -1 ? 999 : idx;
+}
+
+function getStepLabelWithNumber(stepId: string) {
+  const order = getStepOrder(stepId);
+  if (order === 999) return getStepLabel(stepId);
+  return `Etapa ${order + 1} - ${getStepLabel(stepId)}`;
+}
+
 function fmt(value: number) {
   return new Intl.NumberFormat("pt-PT").format(value);
 }
 
 function euro(value: number) {
   return new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(value);
+}
+
+function statusBadge(active: boolean, activeLabel: string) {
+  if (!active) {
+    return <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-500">-</span>;
+  }
+  return <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">{activeLabel}</span>;
+}
+
+function getLeadExitStepId(stepAnswers: Record<string, string>, hasPurchase: boolean) {
+  if (hasPurchase) return null;
+  const reachedSteps = QUIZ_STEP_COLUMNS.filter((stepId) => Boolean(stepAnswers[stepId]));
+  if (reachedSteps.length === 0) return null;
+  return reachedSteps[reachedSteps.length - 1] ?? null;
 }
 
 export default async function QuizDashboardPage({
@@ -114,6 +176,8 @@ export default async function QuizDashboardPage({
   const user = await getCurrentUser();
   if (!user) redirect("/entrar?next=/quizdashboard");
   if (user.email.toLowerCase() !== ADMIN_EMAIL && !user.isSuperAdmin) redirect("/dashboard");
+  const cookieStore = await cookies();
+  const hasDashboardAccess = cookieStore.get(DASHBOARD_ACCESS_COOKIE)?.value === "ok";
 
   const sp = new URLSearchParams();
   const incoming = (await searchParams) ?? {};
@@ -126,6 +190,47 @@ export default async function QuizDashboardPage({
     if (Array.isArray(v)) {
       if (v[0]) sp.set(k, v[0]);
     } else if (v) sp.set(k, v);
+  }
+  const authError = sp.get("auth");
+
+  if (!hasDashboardAccess) {
+    return (
+      <main className="min-h-dvh bg-neutral-50 px-4 py-8 sm:px-6">
+        <div className="mx-auto w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-5">
+          <h1 className="text-xl font-bold text-pg-ink">Acesso protegido</h1>
+          <p className="mt-1 text-sm text-pg-ink/70">
+            Introduz a password para entrar no dashboard de métricas.
+          </p>
+          {authError === "invalid" ? (
+            <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              Password inválida.
+            </p>
+          ) : null}
+          <form action="/api/quizdashboard/access" method="post" className="mt-4 space-y-3">
+            <input type="hidden" name="next" value="/quizdashboard" />
+            <div>
+              <label htmlFor="dashboard-password" className="mb-1 block text-xs font-semibold text-pg-ink/70">
+                Password
+              </label>
+              <input
+                id="dashboard-password"
+                name="password"
+                type="password"
+                required
+                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm"
+                placeholder="Introduz a password"
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            >
+              Entrar no dashboard
+            </button>
+          </form>
+        </div>
+      </main>
+    );
   }
 
   const range = sp.get("range") ?? "30d";
@@ -348,6 +453,13 @@ export default async function QuizDashboardPage({
     { key: "checkout_started", label: "Checkout Start", sessions: stageMap.get("checkout_started") ?? 0 },
     { key: "payment_success", label: "Purchase", sessions: stageMap.get("payment_success") ?? 0 },
   ];
+  const orderedFunnelStepRows = [...funnelStepRows].sort((a, b) => {
+    const aOrder = getStepOrder(a.step_id);
+    const bOrder = getStepOrder(b.step_id);
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    if (a.funnel_id !== b.funnel_id) return a.funnel_id.localeCompare(b.funnel_id);
+    return a.step_id.localeCompare(b.step_id);
+  });
   const funnels = ["all", ...funnelOptionsRows.map((r) => r.value ?? "unknown")];
   const sources = ["all", ...sourceOptionsRows.map((r) => r.value ?? "direct")];
   const totalLeads = Number(leadCountRows[0]?.total ?? 0);
@@ -366,7 +478,7 @@ export default async function QuizDashboardPage({
   exportParams.set("format", "csv");
 
   return (
-    <main className="min-h-dvh bg-neutral-50 px-4 py-8 sm:px-6">
+    <main className="min-h-dvh bg-gradient-to-b from-emerald-50/50 via-white to-neutral-50 px-4 py-8 sm:px-6">
       <div className="mx-auto w-full max-w-7xl space-y-6">
         <header>
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Tracking dashboard</p>
@@ -374,11 +486,19 @@ export default async function QuizDashboardPage({
           <p className="mt-1 text-sm text-pg-ink/70">Visão agregada por eventos, pronta para ligar pixels/APIs externas.</p>
         </header>
 
-        <section className="rounded-2xl border border-neutral-200 bg-white p-4">
-          <form className="grid grid-cols-1 gap-3 md:grid-cols-5">
+        <section className="rounded-2xl border border-neutral-200 bg-white/95 p-4 shadow-sm">
+          <details>
+            <summary className="cursor-pointer list-none text-lg font-semibold text-pg-ink">
+              Filtros e exportacao
+            </summary>
+            <form className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
             <div>
               <label className="mb-1 block text-xs font-semibold text-pg-ink/70">Período</label>
-              <select name="range" defaultValue={range} className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm">
+              <select
+                name="range"
+                defaultValue={range}
+                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+              >
                 <option value="24h">24 horas</option>
                 <option value="7d">7 dias</option>
                 <option value="30d">30 dias</option>
@@ -393,7 +513,7 @@ export default async function QuizDashboardPage({
                 type="month"
                 name="month"
                 defaultValue={month ?? ""}
-                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm"
+                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
               />
             </div>
             <div>
@@ -401,7 +521,7 @@ export default async function QuizDashboardPage({
               <select
                 name="funnel"
                 defaultValue={funnelFilter}
-                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm"
+                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
               >
                 {funnels.map((value) => (
                   <option key={value} value={value}>
@@ -415,7 +535,7 @@ export default async function QuizDashboardPage({
               <select
                 name="source"
                 defaultValue={sourceFilter}
-                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm"
+                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
               >
                 {sources.map((value) => (
                   <option key={value} value={value}>
@@ -431,83 +551,87 @@ export default async function QuizDashboardPage({
                 name="q"
                 defaultValue={q}
                 placeholder="lead_id, session_id..."
-                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm"
+                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
               />
             </div>
             <div className="md:col-span-5">
-              <p className="mb-1 text-xs font-semibold text-pg-ink/70">Colunas da tabela (etapas)</p>
-              <div className="max-h-28 overflow-y-auto rounded-xl border border-neutral-200 p-2">
-                <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-6">
-                  {QUIZ_STEP_COLUMNS.map((stepId) => (
-                    <label key={stepId} className="inline-flex items-center gap-2 text-xs text-pg-ink">
-                      <input
-                        type="checkbox"
-                        name="col"
-                        value={stepId}
-                        defaultChecked={selectedColumnsSet.has(stepId)}
-                        className="h-3.5 w-3.5 rounded border-neutral-300"
-                      />
-                      <span>{stepId}</span>
-                    </label>
-                  ))}
+              <details className="rounded-xl border border-neutral-200 bg-white shadow-sm">
+                <summary className="cursor-pointer list-none px-3 py-2 text-sm font-semibold text-pg-ink">
+                  Colunas da tabela (etapas) - {selectedStepColumns.length} selecionadas
+                </summary>
+                <div className="border-t border-neutral-200 p-2">
+                  <div className="max-h-28 overflow-y-auto">
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-6">
+                      {QUIZ_STEP_COLUMNS.map((stepId) => (
+                        <label key={stepId} className="inline-flex items-center gap-2 text-xs text-pg-ink">
+                          <input
+                            type="checkbox"
+                            name="col"
+                            value={stepId}
+                            defaultChecked={selectedColumnsSet.has(stepId)}
+                            className="h-3.5 w-3.5 rounded border-neutral-300"
+                          />
+                      <span>{getStepLabelWithNumber(stepId)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </details>
             </div>
             <div className="flex items-end">
-              <button
-                type="submit"
-                className="w-full rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-              >
+              <button type="submit" className="w-full rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700">
                 Aplicar filtros
               </button>
             </div>
             <div className="flex items-end">
               <a
                 href={`/api/events/export?${exportParams.toString()}`}
-                className="w-full rounded-xl border border-neutral-300 bg-white px-4 py-2 text-center text-sm font-semibold text-pg-ink hover:bg-neutral-50"
+                className="w-full rounded-xl border border-neutral-300 bg-white px-4 py-2 text-center text-sm font-semibold text-pg-ink shadow-sm transition hover:bg-neutral-50"
               >
                 Export CSV
               </a>
             </div>
-          </form>
+            </form>
+          </details>
         </section>
 
         <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-          <div className="rounded-2xl bg-white p-4 ring-1 ring-neutral-100">
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
             <p className="text-xs text-pg-ink/65">Visitas</p>
             <p className="mt-1 text-2xl font-bold text-pg-ink">{fmt(Number(totals.visits ?? 0))}</p>
           </div>
-          <div className="rounded-2xl bg-white p-4 ring-1 ring-neutral-100">
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
             <p className="text-xs text-pg-ink/65">Sessões</p>
             <p className="mt-1 text-2xl font-bold text-pg-ink">{fmt(Number(totals.sessions ?? 0))}</p>
           </div>
-          <div className="rounded-2xl bg-white p-4 ring-1 ring-neutral-100">
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
             <p className="text-xs text-pg-ink/65">Leads</p>
             <p className="mt-1 text-2xl font-bold text-pg-ink">{fmt(Number(totals.leads ?? 0))}</p>
           </div>
-          <div className="rounded-2xl bg-white p-4 ring-1 ring-neutral-100">
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
             <p className="text-xs text-pg-ink/65">Vendas</p>
             <p className="mt-1 text-2xl font-bold text-pg-ink">{fmt(Number(totals.sales ?? 0))}</p>
           </div>
-          <div className="rounded-2xl bg-white p-4 ring-1 ring-neutral-100">
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
             <p className="text-xs text-pg-ink/65">Receita</p>
             <p className="mt-1 text-2xl font-bold text-pg-ink">{euro(revenue)}</p>
           </div>
-          <div className="rounded-2xl bg-white p-4 ring-1 ring-neutral-100">
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
             <p className="text-xs text-pg-ink/65">Conversão</p>
             <p className="mt-1 text-2xl font-bold text-pg-ink">{conversionRate.toFixed(2)}%</p>
           </div>
         </section>
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border border-neutral-200 bg-white p-4 lg:col-span-2">
+          <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm lg:col-span-2">
             <h2 className="text-lg font-semibold text-pg-ink">Funil principal (sessões)</h2>
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
               {funnelStages.map((stage, idx) => {
                 const prev = idx === 0 ? stage.sessions : funnelStages[idx - 1].sessions;
                 const rate = prev === 0 ? 0 : (stage.sessions / prev) * 100;
                 return (
-                  <div key={stage.key} className="rounded-xl border border-neutral-100 p-3">
+                  <div key={stage.key} className="rounded-xl border border-emerald-100 bg-gradient-to-b from-emerald-50/60 to-white p-3">
                     <p className="text-xs text-pg-ink/60">{stage.label}</p>
                     <p className="mt-1 text-2xl font-bold text-pg-ink">{fmt(stage.sessions)}</p>
                     <p className="mt-1 text-xs text-pg-ink/70">Taxa etapa: {rate.toFixed(2)}%</p>
@@ -517,14 +641,14 @@ export default async function QuizDashboardPage({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+          <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
             <h2 className="text-lg font-semibold text-pg-ink">Resumo diário (`event_daily_agg`)</h2>
             <div className="mt-3 space-y-2">
               {dailyAggRows.length === 0 ? (
                 <p className="text-sm text-pg-ink/70">Sem dados ainda.</p>
               ) : (
                 dailyAggRows.map((row, idx) => (
-                  <div key={`${row.date}-${row.funnel_id}-${row.utm_source}-${idx}`} className="rounded-xl border border-neutral-100 px-3 py-2 text-sm">
+                  <div key={`${row.date}-${row.funnel_id}-${row.utm_source}-${idx}`} className="rounded-xl border border-neutral-100 bg-neutral-50/50 px-3 py-2 text-sm">
                     <p className="font-semibold text-pg-ink">
                       {row.date} · {row.funnel_id} · {row.utm_source}
                     </p>
@@ -538,29 +662,33 @@ export default async function QuizDashboardPage({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-neutral-200 bg-white p-4">
-            <h2 className="text-lg font-semibold text-pg-ink">Etapas do funil (`funnel_step_agg`)</h2>
-            <div className="mt-3 space-y-2">
-              {funnelStepRows.length === 0 ? (
-                <p className="text-sm text-pg-ink/70">Sem dados ainda.</p>
-              ) : (
-                funnelStepRows.map((row, idx) => (
-                  <div key={`${row.funnel_id}-${row.step_id}-${idx}`} className="rounded-xl border border-neutral-100 px-3 py-2 text-sm">
-                    <p className="font-semibold text-pg-ink">
-                      {row.funnel_id} · {row.step_id}
-                    </p>
-                    <p className="text-pg-ink/75">
-                      views {fmt(Number(row.views ?? 0))} · answers {fmt(Number(row.answers ?? 0))} · completions{" "}
-                      {fmt(Number(row.completions ?? 0))} · drop {Number(row.drop_rate ?? 0).toFixed(2)}%
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
+          <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+            <details>
+              <summary className="cursor-pointer list-none text-lg font-semibold text-pg-ink">
+                Etapas do funil (`funnel_step_agg`)
+              </summary>
+              <div className="mt-3 space-y-2">
+                {funnelStepRows.length === 0 ? (
+                  <p className="text-sm text-pg-ink/70">Sem dados ainda.</p>
+                ) : (
+                  orderedFunnelStepRows.map((row, idx) => (
+                    <div key={`${row.funnel_id}-${row.step_id}-${idx}`} className="rounded-xl border border-neutral-100 bg-neutral-50/60 px-3 py-2 text-sm">
+                      <p className="font-semibold text-pg-ink">
+                        {row.funnel_id} · {getStepLabelWithNumber(row.step_id)}
+                      </p>
+                      <p className="text-pg-ink/75">
+                        views {fmt(Number(row.views ?? 0))} · answers {fmt(Number(row.answers ?? 0))} · completions{" "}
+                        {fmt(Number(row.completions ?? 0))} · drop {Number(row.drop_rate ?? 0).toFixed(2)}%
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </details>
           </div>
         </section>
 
-        <section className="rounded-2xl border border-neutral-200 bg-white p-4">
+        <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
           <h2 className="text-lg font-semibold text-pg-ink">Tabela por lead (todas as etapas do funil)</h2>
           <p className="mt-1 text-xs text-pg-ink/65">
             Mostra cada lead/sessão e o estado em cada etapa. Filtros acima aplicam em toda a tabela.
@@ -575,18 +703,18 @@ export default async function QuizDashboardPage({
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-[1900px] border-collapse text-sm">
               <thead>
-                <tr className="bg-neutral-50">
+                <tr className="bg-emerald-50/70">
                   <th className="border border-neutral-200 px-2 py-2 text-left font-semibold">Lead</th>
                   <th className="border border-neutral-200 px-2 py-2 text-left font-semibold">Data</th>
-                  <th className="border border-neutral-200 px-2 py-2 text-left font-semibold">Quiz</th>
+                  <th className="border border-neutral-200 px-2 py-2 text-left font-semibold">Quiz Iniciado</th>
+                  {selectedStepColumns.map((stepId) => (
+                    <th key={stepId} className="border border-neutral-200 px-2 py-2 text-left font-semibold">
+                      {getStepLabelWithNumber(stepId)}
+                    </th>
+                  ))}
                   <th className="border border-neutral-200 px-2 py-2 text-left font-semibold">Resultado CTA</th>
                   <th className="border border-neutral-200 px-2 py-2 text-left font-semibold">Checkout</th>
                   <th className="border border-neutral-200 px-2 py-2 text-left font-semibold">Compra</th>
-                  {selectedStepColumns.map((stepId) => (
-                    <th key={stepId} className="border border-neutral-200 px-2 py-2 text-left font-semibold">
-                      {stepId}
-                    </th>
-                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -599,21 +727,35 @@ export default async function QuizDashboardPage({
                 ) : (
                   leadFunnelRows.map((row) => {
                     const stepAnswers = row.step_answers ?? {};
+                    const exitStepId = getLeadExitStepId(stepAnswers, row.payment_success);
                     return (
-                      <tr key={row.lead_key} className="odd:bg-white even:bg-neutral-50/30">
+                      <tr key={row.lead_key} className="odd:bg-white even:bg-emerald-50/20">
                         <td className="border border-neutral-200 px-2 py-2 font-semibold text-pg-ink">{row.lead_display}</td>
                         <td className="border border-neutral-200 px-2 py-2 text-pg-ink/80">
-                          {new Date(row.first_seen).toLocaleDateString("pt-PT")}
+                          {new Date(row.first_seen).toLocaleString("pt-PT", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
                         </td>
-                        <td className="border border-neutral-200 px-2 py-2">{row.quiz_started ? "OK" : "-"}</td>
-                        <td className="border border-neutral-200 px-2 py-2">{row.result_cta_clicked ? "clicked" : "-"}</td>
-                        <td className="border border-neutral-200 px-2 py-2">{row.checkout_started ? "started" : "-"}</td>
-                        <td className="border border-neutral-200 px-2 py-2">{row.payment_success ? "paid" : "-"}</td>
+                        <td className="border border-neutral-200 px-2 py-2">{statusBadge(row.quiz_started, "OK")}</td>
                         {selectedStepColumns.map((stepId) => (
-                          <td key={`${row.lead_key}-${stepId}`} className="border border-neutral-200 px-2 py-2 text-pg-ink/80">
+                          <td
+                            key={`${row.lead_key}-${stepId}`}
+                            className={
+                              exitStepId === stepId
+                                ? "border border-red-300 bg-red-600 px-2 py-2 font-semibold text-white"
+                                : "border border-neutral-200 px-2 py-2 text-pg-ink/80"
+                            }
+                          >
                             {stepAnswers[stepId] ?? "-"}
                           </td>
                         ))}
+                        <td className="border border-neutral-200 px-2 py-2">{statusBadge(row.result_cta_clicked, "clicked")}</td>
+                        <td className="border border-neutral-200 px-2 py-2">{statusBadge(row.checkout_started, "started")}</td>
+                        <td className="border border-neutral-200 px-2 py-2">{statusBadge(row.payment_success, "paid")}</td>
                       </tr>
                     );
                   })
