@@ -16,9 +16,16 @@ export async function POST(request: Request) {
   const { activePlans, checkins } = parsed.data;
 
   try {
-    await prisma.user.update({
+    await prisma.user.upsert({
       where: { id: user.id },
-      data: {
+      create: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        activeProtocolPlans: activePlans,
+        protocolPlanCheckins: checkins ?? {},
+      },
+      update: {
         activeProtocolPlans: activePlans,
         protocolPlanCheckins: checkins ?? {},
       },
@@ -26,6 +33,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[api/user/protocol-plans-state]", e);
-    return NextResponse.json({ error: "Não foi possível guardar." }, { status: 500 });
+    const detail =
+      e && typeof e === "object" && "message" in e ? String((e as { message?: unknown }).message) : "";
+
+    // Ambientes desfasados (db/schema antigos) podem não ter estes campos ainda.
+    // Não devemos bloquear a experiência no dashboard por causa desta sincronização auxiliar.
+    if (
+      detail.includes("Unknown argument `activeProtocolPlans`") ||
+      detail.includes("Unknown argument `protocolPlanCheckins`")
+    ) {
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        reason: "protocol-plans-state fields unavailable",
+      });
+    }
+    return NextResponse.json(
+      {
+        error: "Não foi possível guardar.",
+        ...(process.env.NODE_ENV === "development" && detail ? { detail } : {}),
+      },
+      { status: 500 },
+    );
   }
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PrimaryButton } from "@/components/primary-button";
@@ -59,6 +60,11 @@ export function LoginForm() {
           onChange={(e) => setPassword(e.target.value)}
           required
         />
+      </div>
+      <div className="-mt-1 text-right">
+        <Link href="/esqueci-password" className="text-xs font-semibold text-pg-berry/90 hover:underline">
+          Esqueci-me da palavra-passe
+        </Link>
       </div>
       {error ? <p className="text-sm text-rose-700">{error}</p> : null}
       <PrimaryButton type="submit" className="w-full" disabled={loading}>

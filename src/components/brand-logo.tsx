@@ -37,7 +37,7 @@ export function BrandLogo({ variant, className, priority }: Props) {
       width={800}
       height={520}
       className={cn(byVariant[variant], className)}
-      priority={priority ?? variant === "hero"}
+      priority={priority ?? (variant === "hero" || variant === "auth")}
       sizes={bySizes[variant]}
     />
   );

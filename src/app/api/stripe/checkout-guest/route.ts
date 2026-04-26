@@ -1,20 +1,14 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
-import { planUpdateSchema } from "@/lib/validators";
-import { getCurrentUser } from "@/lib/session";
 import { PLAN_CATALOG } from "@/lib/plans";
 import { getStripe, getStripePriceIdForPlan } from "@/lib/stripe";
+import { planUpdateSchema } from "@/lib/validators";
 
 export async function POST(request: Request) {
-  const user = await getCurrentUser();
-  if (!user) {
-    return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
-  }
-
   const json = await request.json().catch(() => null);
   const parsed = planUpdateSchema.safeParse(json);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Plano inválido." }, { status: 400 });
+    return NextResponse.json({ error: "Plano invalido." }, { status: 400 });
   }
 
   const plan = parsed.data.plan;
@@ -32,10 +26,10 @@ export async function POST(request: Request) {
   const proto = hdrs.get("x-forwarded-proto") ?? "https";
   const originFromRequest = host ? `${proto}://${host}` : null;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? originFromRequest ?? "http://localhost:3000";
+
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
-    // Item recorrente mensal + item único de entrada cobrado só no primeiro pagamento.
     line_items: [
       { price: priceId, quantity: 1 },
       {
@@ -49,25 +43,23 @@ export async function POST(request: Request) {
         quantity: 1,
       },
     ],
-    success_url: `${appUrl}/planos?checkout=success`,
-    cancel_url: `${appUrl}/planos?checkout=cancel`,
-    customer_email: user.email,
-    client_reference_id: user.id,
+    success_url: `${appUrl}/quiz?checkout=success`,
+    cancel_url: `${appUrl}/quiz?checkout=cancel`,
     subscription_data: {
       metadata: {
-        userId: user.id,
         plan,
         billingModel: "intro_once_then_monthly",
+        source: "quiz_guest",
       },
     },
     metadata: {
-      userId: user.id,
       plan,
+      source: "quiz_guest",
     },
   });
 
   if (!session.url) {
-    return NextResponse.json({ error: "Não foi possível criar checkout." }, { status: 500 });
+    return NextResponse.json({ error: "Nao foi possivel criar checkout." }, { status: 500 });
   }
 
   return NextResponse.json({ url: session.url });

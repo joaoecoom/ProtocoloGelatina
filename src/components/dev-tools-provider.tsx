@@ -104,6 +104,7 @@ function useDevFetchInterceptor() {
               const o = j as Record<string, unknown>;
               const parts: string[] = [];
               if (typeof o.error === "string") parts.push(o.error);
+              if (typeof o.detail === "string" && o.detail !== o.error) parts.push(o.detail);
               if (typeof o.message === "string") parts.push(o.message);
               if (typeof o.prismaCode === "string") parts.push(`prisma: ${o.prismaCode}`);
               if (typeof o.code === "string" && o.code !== o.prismaCode) parts.push(`code: ${o.code}`);

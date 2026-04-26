@@ -34,6 +34,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: msg }, { status: 400 });
     }
 
+    /**
+     * Supabase pode devolver `user` sem erro e sem `identities` quando o email
+     * já existe (proteção contra enumeração). Nesse caso não há novo envio.
+     */
+    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      return NextResponse.json({ error: "Este email já está registado." }, { status: 400 });
+    }
+
     if (data.user) {
       try {
         await prisma.user.upsert({
