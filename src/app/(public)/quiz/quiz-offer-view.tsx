@@ -70,10 +70,10 @@ const QUESTIONS: QuizQuestion[] = [
     id: "meta-quilos",
     title: "Quantos quilos deseja perder?",
     options: [
-      { id: "5a10", label: "5KG A 10KG", score: 2 },
-      { id: "15a20", label: "15KG A 20KG", score: 3 },
-      { id: "mais20faixa", label: "MAIS DE 20KG", score: 3 },
-      { id: "sem-meta", label: "Não tenho uma meta exata", score: 1 },
+      { id: "ate5", label: "ATÉ 5 KG", score: 1 },
+      { id: "5a10", label: "5 KG A 10 KG", score: 2 },
+      { id: "15a20", label: "15 KG A 20 KG", score: 3 },
+      { id: "mais20faixa", label: "MAIS DE 20 KG", score: 3 },
     ],
   },
   {
@@ -124,10 +124,10 @@ const QUESTIONS: QuizQuestion[] = [
     id: "dificuldade-peso",
     title: "Você enfrenta alguma dificuldade no dia a dia devido ao peso?",
     options: [
-      { id: "escadas", label: "Subir as escadas", score: 3 },
+      { id: "escadas", label: "Subir as\nescadas", score: 3 },
       { id: "sentar", label: "Se sentar", score: 2 },
       { id: "agachar", label: "Agachar", score: 3 },
-      { id: "deitar", label: "Deitar na cama", score: 2 },
+      { id: "deitar", label: "Deitar na\ncama", score: 2 },
       { id: "outros", label: "Outros", score: 1 },
       { id: "nenhuma", label: "Não tenho dificuldades", score: 0 },
     ],
@@ -233,28 +233,6 @@ const QUESTIONS: QuizQuestion[] = [
       { id: "abacaxi", label: "Abacaxi", icon: "🍍", score: 2 },
     ],
   },
-  {
-    id: "corpo-sonhos",
-    title: "Qual o corpo dos seus sonhos?",
-    options: [
-      { id: "natural", label: "Natural", score: 2 },
-      { id: "em-forma", label: "Em forma", score: 3 },
-    ],
-  },
-  {
-    id: "mensagem-receitinha",
-    title: "Fique tranquila! Assim que você finalizar sua avaliação, você vai receber a sua receitinha no seu E-mail e no seu Whatsapp",
-    options: [],
-  },
-  {
-    id: "apoio",
-    title: "O que te faria manter o plano ativo?",
-    options: [
-      { id: "passo", label: "Ter o próximo passo claro", score: 3 },
-      { id: "lembretes", label: "Lembretes e notificações", score: 2 },
-      { id: "comunidade", label: "Sentir acompanhamento diário", score: 1 },
-    ],
-  },
 ];
 
 function getStepId(params: {
@@ -263,17 +241,40 @@ function getStepId(params: {
   isAnalyzing: boolean;
   isDone: boolean;
   showFinalSalesStep: boolean;
+  postPreSalesStep: number;
 }) {
   if (params.isIntro) return "intro";
   if (params.currentId) return params.currentId;
   if (params.isAnalyzing) return "analyzing";
   if (!params.isDone) return "step-unknown";
+  if (!params.showFinalSalesStep) {
+    if (params.postPreSalesStep === 1) return "apoio";
+    if (params.postPreSalesStep === 2) return "corpo-sonhos";
+    if (params.postPreSalesStep === 3) return "mensagem-receitinha";
+  }
   return params.showFinalSalesStep ? "final-sales" : "pre-sales";
 }
+
+const CONTINUE_BUTTON_CLASS =
+  "quiz-cta-pulse relative flex items-center justify-center rounded-2xl bg-emerald-600 px-6 font-semibold text-white shadow-[0_8px_0_#0b8a61] transition-all hover:brightness-105 active:translate-y-[2px] active:shadow-[0_6px_0_#0b8a61] disabled:translate-y-0 disabled:shadow-none disabled:opacity-50 disabled:animate-none";
+const SHOW_STEP_DEBUG_NAV = true;
+const APOIO_OPTIONS = [
+  { id: "passo", label: "Ter o próximo passo claro", score: 3 },
+  { id: "lembretes", label: "Lembretes e notificações", score: 2 },
+  { id: "comunidade", label: "Sentir acompanhamento diário", score: 1 },
+] as const;
+const CORPO_SONHOS_OPTIONS = [
+  { id: "natural", label: "Natural", score: 2 },
+  { id: "em-forma", label: "Em forma", score: 3 },
+] as const;
 
 export default function QuizOfferView() {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, { optionId: string; score: number }>>({});
+  const [goalSelections, setGoalSelections] = useState<string[]>([]);
+  const [dificuldadeSelections, setDificuldadeSelections] = useState<string[]>([]);
+  const [beneficiosSelections, setBeneficiosSelections] = useState<string[]>([]);
+  const [frutaSelections, setFrutaSelections] = useState<string[]>([]);
   const [leadName, setLeadName] = useState("");
   const [leadWeight, setLeadWeight] = useState("");
   const [leadHeight, setLeadHeight] = useState("");
@@ -281,7 +282,14 @@ export default function QuizOfferView() {
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [showFinalSalesStep, setShowFinalSalesStep] = useState(false);
+  const [postPreSalesStep, setPostPreSalesStep] = useState(0);
+  const [apoioSelection, setApoioSelection] = useState<string | null>(null);
+  const [corpoSonhosSelection, setCorpoSonhosSelection] = useState<string | null>(null);
   const [analyzingProgress, setAnalyzingProgress] = useState(1);
+  const [nextStepAfterAnalyzing, setNextStepAfterAnalyzing] = useState<number | null>(null);
+  const [animatedBmiPointer, setAnimatedBmiPointer] = useState(6);
+  const [animatedBmiValue, setAnimatedBmiValue] = useState(18.5);
+  const urgentAudioRef = useRef<HTMLAudioElement | null>(null);
   const hasTrackedLandingRef = useRef(false);
 
   const currentQuestionIndex = step - 1;
@@ -292,11 +300,76 @@ export default function QuizOfferView() {
   const isAnalyzing = step === QUESTIONS.length + 1;
   const isDone = step > QUESTIONS.length + 1;
   const progress = Math.round((Math.max(step, 1) / (QUESTIONS.length + 1)) * 100);
-
-  const totalScore = useMemo(
-    () => Object.values(answers).reduce((acc, row) => acc + row.score, 0),
-    [answers],
-  );
+  const goalScore = useMemo(() => {
+    const goalQuestion = QUESTIONS.find((q) => q.id === "goal");
+    if (!goalQuestion) return 0;
+    return goalSelections.reduce((acc, selectedId) => {
+      const option = goalQuestion.options.find((opt) => opt.id === selectedId);
+      return acc + (option?.score ?? 0);
+    }, 0);
+  }, [goalSelections]);
+  const dificuldadeScore = useMemo(() => {
+    const dificuldadeQuestion = QUESTIONS.find((q) => q.id === "dificuldade-peso");
+    if (!dificuldadeQuestion) return 0;
+    return dificuldadeSelections.reduce((acc, selectedId) => {
+      const option = dificuldadeQuestion.options.find((opt) => opt.id === selectedId);
+      return acc + (option?.score ?? 0);
+    }, 0);
+  }, [dificuldadeSelections]);
+  const beneficiosScore = useMemo(() => {
+    const beneficiosQuestion = QUESTIONS.find((q) => q.id === "beneficios");
+    if (!beneficiosQuestion) return 0;
+    return beneficiosSelections.reduce((acc, selectedId) => {
+      const option = beneficiosQuestion.options.find((opt) => opt.id === selectedId);
+      return acc + (option?.score ?? 0);
+    }, 0);
+  }, [beneficiosSelections]);
+  const frutaScore = useMemo(() => {
+    const frutaQuestion = QUESTIONS.find((q) => q.id === "fruta-preferida");
+    if (!frutaQuestion) return 0;
+    return frutaSelections.reduce((acc, selectedId) => {
+      const option = frutaQuestion.options.find((opt) => opt.id === selectedId);
+      return acc + (option?.score ?? 0);
+    }, 0);
+  }, [frutaSelections]);
+  const totalScore = useMemo(() => {
+    const otherScores = Object.entries(answers).reduce((acc, [questionId, row]) => {
+      if (questionId === "goal" || questionId === "dificuldade-peso" || questionId === "beneficios" || questionId === "fruta-preferida")
+        return acc;
+      return acc + row.score;
+    }, 0);
+    return otherScores + goalScore + dificuldadeScore + beneficiosScore + frutaScore;
+  }, [answers, goalScore, dificuldadeScore, beneficiosScore, frutaScore]);
+  const bodyMassIndex = useMemo(() => {
+    const parsedWeight = Number.parseFloat(leadWeight.replace(",", "."));
+    const rawHeight = Number.parseFloat(leadHeight.replace(",", "."));
+    if (!Number.isFinite(parsedWeight) || !Number.isFinite(rawHeight) || parsedWeight <= 0 || rawHeight <= 0) {
+      return null;
+    }
+    const heightInMeters = rawHeight > 3 ? rawHeight / 100 : rawHeight;
+    if (heightInMeters <= 0) return null;
+    return parsedWeight / (heightInMeters * heightInMeters);
+  }, [leadWeight, leadHeight]);
+  const bodyMassIndexLabel =
+    bodyMassIndex === null
+      ? "Acima do peso ideal"
+      : bodyMassIndex < 25
+        ? "Saudavel"
+        : bodyMassIndex < 30
+          ? "Acima do peso ideal"
+          : "Sobrepeso";
+  const bodyMassIndexStatusText =
+    bodyMassIndex === null ? "Acima do peso ideal!" : bodyMassIndex < 25 ? "Saudavel!" : bodyMassIndex < 30 ? "Acima do peso ideal!" : "Sobrepeso!";
+  const bodyMassIndexPointerTarget = (() => {
+    if (bodyMassIndex === null) return 74;
+    const minImc = 18.5;
+    const maxImc = 35;
+    const clamped = Math.min(maxImc, Math.max(minImc, bodyMassIndex));
+    return ((clamped - minImc) / (maxImc - minImc)) * 100;
+  })();
+  const bodyMassIndexValueTarget = bodyMassIndex === null ? 30 : bodyMassIndex;
+  const bubblePointerLeft = Math.min(84, Math.max(16, animatedBmiPointer));
+  const markerPointerLeft = Math.min(96, Math.max(4, animatedBmiPointer));
   const adherenceScore = Math.max(72, Math.min(97, 80 + Math.round((totalScore / Math.max(QUESTIONS.length, 1)) * 4)));
   const currentStepId = getStepId({
     currentId: current?.id,
@@ -304,7 +377,18 @@ export default function QuizOfferView() {
     isAnalyzing,
     isDone,
     showFinalSalesStep,
+    postPreSalesStep,
   });
+  const debugStepLabel = useMemo(() => {
+    if (showFinalSalesStep) return "29 · final-sales";
+    if (isDone) {
+      if (postPreSalesStep === 1) return "26 · apoio";
+      if (postPreSalesStep === 2) return "27 · corpo-sonhos";
+      if (postPreSalesStep === 3) return "28 · mensagem-receitinha";
+      return "25 · pre-sales";
+    }
+    return `${step} · ${currentStepId}`;
+  }, [showFinalSalesStep, isDone, postPreSalesStep, step, currentStepId]);
 
   useEffect(() => {
     if (hasTrackedLandingRef.current) return;
@@ -360,6 +444,45 @@ export default function QuizOfferView() {
   }, [step, currentStepId, isDone]);
 
   useEffect(() => {
+    if (!isDone || showFinalSalesStep) return;
+
+    let frameId = 0;
+    const durationMs = 3200;
+    const startedAt = performance.now();
+    const startPointer = 6;
+    const startBmiValue = 18.5;
+
+    setAnimatedBmiPointer(startPointer);
+    setAnimatedBmiValue(startBmiValue);
+
+    const animate = (timestamp: number) => {
+      const elapsed = timestamp - startedAt;
+      const progressRatio = Math.min(1, elapsed / durationMs);
+      const eased = 1 - (1 - progressRatio) ** 3;
+      const nextPointer = startPointer + (bodyMassIndexPointerTarget - startPointer) * eased;
+      const nextValue = startBmiValue + (bodyMassIndexValueTarget - startBmiValue) * eased;
+
+      setAnimatedBmiPointer(nextPointer);
+      setAnimatedBmiValue(nextValue);
+
+      if (progressRatio < 1) frameId = requestAnimationFrame(animate);
+    };
+
+    frameId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frameId);
+  }, [isDone, showFinalSalesStep, bodyMassIndexPointerTarget, bodyMassIndexValueTarget]);
+
+  useEffect(() => {
+    if (!isDone || showFinalSalesStep) return;
+    const audio = urgentAudioRef.current;
+    if (!audio) return;
+    audio.currentTime = 0;
+    void audio.play().catch(() => {
+      // Browser pode bloquear autoplay em alguns cenarios.
+    });
+  }, [isDone, showFinalSalesStep]);
+
+  useEffect(() => {
     if (!isAnalyzing) return;
 
     let finishTimeout: number | undefined;
@@ -368,6 +491,11 @@ export default function QuizOfferView() {
         const next = Math.min(100, prev + (prev < 70 ? 3 : prev < 90 ? 2 : 1));
         if (next >= 100 && !finishTimeout) {
           finishTimeout = window.setTimeout(() => {
+            if (nextStepAfterAnalyzing !== null) {
+              setStep(nextStepAfterAnalyzing);
+              setNextStepAfterAnalyzing(null);
+              return;
+            }
             setStep(QUESTIONS.length + 2);
           }, 350);
         }
@@ -381,7 +509,108 @@ export default function QuizOfferView() {
     };
   }, [isAnalyzing]);
 
+  useEffect(() => {
+    if (!isDone) {
+      setPostPreSalesStep(0);
+      setApoioSelection(null);
+      setCorpoSonhosSelection(null);
+    }
+  }, [isDone]);
+
   function selectOption(questionId: string, optionId: string, score: number) {
+    if (questionId === "goal") {
+      setGoalSelections((prev) => {
+        const isSelected = prev.includes(optionId);
+        const next = isSelected ? prev.filter((id) => id !== optionId) : [...prev, optionId];
+        void track({
+          event_name: "step_answered",
+          funnel_id: "quiz_gelatina",
+          step_id: questionId,
+          page_type: "quiz",
+          metadata_json: {
+            question_id: questionId,
+            answer_id: optionId,
+            answer_label: current?.options.find((opt) => opt.id === optionId)?.label ?? optionId,
+            score,
+            selection_action: isSelected ? "unselect" : "select",
+            selected_count: next.length,
+            selected_answers: next,
+          },
+        });
+        return next;
+      });
+      return;
+    }
+    if (questionId === "dificuldade-peso") {
+      setDificuldadeSelections((prev) => {
+        const isSelected = prev.includes(optionId);
+        const next = isSelected ? prev.filter((id) => id !== optionId) : [...prev, optionId];
+        void track({
+          event_name: "step_answered",
+          funnel_id: "quiz_gelatina",
+          step_id: questionId,
+          page_type: "quiz",
+          metadata_json: {
+            question_id: questionId,
+            answer_id: optionId,
+            answer_label: current?.options.find((opt) => opt.id === optionId)?.label ?? optionId,
+            score,
+            selection_action: isSelected ? "unselect" : "select",
+            selected_count: next.length,
+            selected_answers: next,
+          },
+        });
+        return next;
+      });
+      return;
+    }
+    if (questionId === "beneficios") {
+      setBeneficiosSelections((prev) => {
+        const isSelected = prev.includes(optionId);
+        const next = isSelected ? prev.filter((id) => id !== optionId) : [...prev, optionId];
+        void track({
+          event_name: "step_answered",
+          funnel_id: "quiz_gelatina",
+          step_id: questionId,
+          page_type: "quiz",
+          metadata_json: {
+            question_id: questionId,
+            answer_id: optionId,
+            answer_label: current?.options.find((opt) => opt.id === optionId)?.label ?? optionId,
+            score,
+            selection_action: isSelected ? "unselect" : "select",
+            selected_count: next.length,
+            selected_answers: next,
+          },
+        });
+        return next;
+      });
+      return;
+    }
+    if (questionId === "fruta-preferida") {
+      setFrutaSelections((prev) => {
+        const isSelected = prev.includes(optionId);
+        const next = isSelected ? prev.filter((id) => id !== optionId) : [...prev, optionId];
+        void track({
+          event_name: "step_answered",
+          funnel_id: "quiz_gelatina",
+          step_id: questionId,
+          page_type: "quiz",
+          metadata_json: {
+            question_id: questionId,
+            answer_id: optionId,
+            answer_label: current?.options.find((opt) => opt.id === optionId)?.label ?? optionId,
+            score,
+            selection_action: isSelected ? "unselect" : "select",
+            selected_count: next.length,
+            selected_answers: next,
+          },
+        });
+        return next;
+      });
+      return;
+    }
+
     setAnswers((prev) => ({ ...prev, [questionId]: { optionId, score } }));
     void track({
       event_name: "step_answered",
@@ -395,6 +624,26 @@ export default function QuizOfferView() {
         score,
       },
     });
+
+    // Nesta etapa, o fluxo avanca automaticamente apos selecionar.
+    if (
+      questionId === "sono-horas" ||
+      questionId === "hidratacao" ||
+      questionId === "impede-emagrecer" ||
+      questionId === "kilos" ||
+      questionId === "area-gordura" ||
+      questionId === "impacto-vida" ||
+      questionId === "aparencia-fisica" ||
+      questionId === "tempo" ||
+      questionId === "sexo" ||
+      questionId === "idade" ||
+      questionId === "meta-quilos" ||
+      questionId === "tipo-corpo"
+    ) {
+      setTimeout(() => {
+        setStep((s) => Math.min(QUESTIONS.length + 1, s + 1));
+      }, 120);
+    }
   }
 
   function next() {
@@ -478,6 +727,77 @@ export default function QuizOfferView() {
       setStep((s) => s + 1);
       return;
     }
+    if (current.id === "goal") {
+      if (goalSelections.length === 0) return;
+      if (isLastQuestion) {
+        setAnalyzingProgress(1);
+        void track({
+          event_name: "quiz_completed",
+          funnel_id: "quiz_gelatina",
+          step_id: current.id,
+          page_type: "quiz",
+          metadata_json: { answered_steps: Object.keys(answers).length + 1 },
+        });
+        setStep(QUESTIONS.length + 1);
+        return;
+      }
+      setStep((s) => s + 1);
+      return;
+    }
+    if (current.id === "dificuldade-peso") {
+      if (dificuldadeSelections.length === 0) return;
+      if (isLastQuestion) {
+        setAnalyzingProgress(1);
+        void track({
+          event_name: "quiz_completed",
+          funnel_id: "quiz_gelatina",
+          step_id: current.id,
+          page_type: "quiz",
+          metadata_json: { answered_steps: Object.keys(answers).length + 1 },
+        });
+        setStep(QUESTIONS.length + 1);
+        return;
+      }
+      setStep((s) => s + 1);
+      return;
+    }
+    if (current.id === "beneficios") {
+      if (beneficiosSelections.length === 0) return;
+      if (isLastQuestion) {
+        setAnalyzingProgress(1);
+        void track({
+          event_name: "quiz_completed",
+          funnel_id: "quiz_gelatina",
+          step_id: current.id,
+          page_type: "quiz",
+          metadata_json: { answered_steps: Object.keys(answers).length + 1 },
+        });
+        setStep(QUESTIONS.length + 1);
+        return;
+      }
+      setStep((s) => s + 1);
+      return;
+    }
+    if (current.id === "fruta-preferida") {
+      if (frutaSelections.length === 0) return;
+      if (isLastQuestion) {
+        setAnalyzingProgress(1);
+        setNextStepAfterAnalyzing(null);
+        void track({
+          event_name: "quiz_completed",
+          funnel_id: "quiz_gelatina",
+          step_id: current.id,
+          page_type: "quiz",
+          metadata_json: { answered_steps: Object.keys(answers).length + 1 },
+        });
+        setStep(QUESTIONS.length + 1);
+        return;
+      }
+      setAnalyzingProgress(1);
+      setNextStepAfterAnalyzing(step + 1);
+      setStep(QUESTIONS.length + 1);
+      return;
+    }
     if (!answers[current.id]) return;
     if (isLastQuestion) {
       setAnalyzingProgress(1);
@@ -504,6 +824,76 @@ export default function QuizOfferView() {
       metadata_json: { cta: "go_to_final_sales" },
     });
     setShowFinalSalesStep(true);
+  }
+
+  function selectApoioOption(optionId: string, score: number) {
+    setApoioSelection(optionId);
+    void track({
+      event_name: "step_answered",
+      funnel_id: "quiz_gelatina",
+      step_id: "apoio",
+      page_type: "quiz",
+      metadata_json: { question_id: "apoio", answer_id: optionId, score },
+    });
+  }
+
+  function selectCorpoSonhosOption(optionId: string, score: number) {
+    setCorpoSonhosSelection(optionId);
+    void track({
+      event_name: "step_answered",
+      funnel_id: "quiz_gelatina",
+      step_id: "corpo-sonhos",
+      page_type: "quiz",
+      metadata_json: { question_id: "corpo-sonhos", answer_id: optionId, score },
+    });
+  }
+
+  function continueAfterPreSales() {
+    if (postPreSalesStep === 0) {
+      setPostPreSalesStep(1);
+      return;
+    }
+    if (postPreSalesStep === 1) {
+      if (!apoioSelection) return;
+      setPostPreSalesStep(2);
+      return;
+    }
+    if (postPreSalesStep === 2) {
+      if (!corpoSonhosSelection) return;
+      setPostPreSalesStep(3);
+      return;
+    }
+    goToFinalSalesStep();
+  }
+
+  function debugGoPrevStep() {
+    if (showFinalSalesStep) {
+      setShowFinalSalesStep(false);
+      setPostPreSalesStep(3);
+      return;
+    }
+    if (isDone && postPreSalesStep > 0) {
+      setPostPreSalesStep((prev) => Math.max(0, prev - 1));
+      return;
+    }
+    setStep((prev) => Math.max(0, prev - 1));
+  }
+
+  function debugGoNextStep() {
+    if (showFinalSalesStep) return;
+    if (isDone) {
+      if (postPreSalesStep < 3) {
+        setPostPreSalesStep((prev) => Math.min(3, prev + 1));
+        return;
+      }
+      setShowFinalSalesStep(true);
+      return;
+    }
+    if (step >= QUESTIONS.length + 2) {
+      setShowFinalSalesStep(true);
+      return;
+    }
+    setStep((prev) => Math.min(QUESTIONS.length + 2, prev + 1));
   }
 
   async function startCheckout() {
@@ -564,6 +954,27 @@ export default function QuizOfferView() {
   return (
     <main className="min-h-dvh bg-white px-4 pb-14 pt-7 sm:px-6">
       <div className="mx-auto w-full max-w-5xl">
+        {SHOW_STEP_DEBUG_NAV ? (
+          <div className="mb-4 flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
+            <button
+              type="button"
+              onClick={debugGoPrevStep}
+              className="rounded-md border border-emerald-300 bg-white px-3 py-1 font-semibold text-emerald-700"
+            >
+              ← Etapa
+            </button>
+            <span className="font-medium text-emerald-800">
+              Step {debugStepLabel}
+            </span>
+            <button
+              type="button"
+              onClick={debugGoNextStep}
+              className="rounded-md border border-emerald-300 bg-white px-3 py-1 font-semibold text-emerald-700"
+            >
+              Etapa →
+            </button>
+          </div>
+        ) : null}
         <div className="mx-auto mb-8 w-fit">
           <BrandLogo variant="auth" className="w-24 sm:w-28" />
         </div>
@@ -583,7 +994,7 @@ export default function QuizOfferView() {
               </div>
             </div>
 
-            <p className="mt-8 text-[35px] leading-relaxed text-pg-ink">
+            <p className="mt-8 text-[28px] leading-relaxed text-pg-ink sm:text-[32px]">
               <span className="font-extrabold text-red-600">Atencao:</span> oferecemos apenas{" "}
               <span className="font-extrabold">uma consulta por pessoa.</span> Se voce sair, perdera a sua vez.
               Aproveite essa oportunidade exclusiva!
@@ -592,7 +1003,7 @@ export default function QuizOfferView() {
             <button
               type="button"
               onClick={next}
-              className="mt-9 flex h-16 w-full items-center justify-center rounded-2xl bg-emerald-600 px-6 text-xl font-semibold text-white"
+              className={`mt-9 h-16 w-full text-xl ${CONTINUE_BUTTON_CLASS}`}
             >
               FAZER TESTE GRATIS
             </button>
@@ -745,45 +1156,63 @@ export default function QuizOfferView() {
 
             {current.id === "prova-mariana" ? (
               <div className="mx-auto max-w-[720px]">
-                <div className="grid grid-cols-2 overflow-hidden rounded-2xl border-2 border-emerald-600/80">
-                  <div className="relative h-[360px] bg-gradient-to-b from-amber-100 to-rose-100">
-                    <div className="absolute inset-x-0 bottom-0 h-44 bg-neutral-300/60" />
-                  </div>
-                  <div className="relative h-[360px] bg-gradient-to-b from-neutral-200 to-fuchsia-100">
-                    <div className="absolute inset-x-0 bottom-0 h-44 bg-neutral-300/60" />
-                  </div>
+                <div className="overflow-hidden rounded-2xl border-2 border-emerald-600/80">
+                  <Image
+                    src="/quiz/prova-mariana.png"
+                    alt="Antes e depois da Mariana"
+                    width={1024}
+                    height={1024}
+                    sizes="(max-width: 768px) 92vw, 720px"
+                    className="h-auto w-full"
+                  />
                 </div>
               </div>
             ) : current.id === "explicacao-gelatina" ? (
               <div className="mx-auto max-w-[720px]">
                 <div className="rounded-2xl border border-emerald-600/30 bg-white p-5 text-center">
-                  <p className="text-[44px] font-black leading-tight text-red-500">VEJA COMO FUNCIONA A</p>
-                  <p className="text-[44px] font-black leading-tight text-red-500">GELATINA BARIÁTRICA</p>
-                  <div className="mx-auto mt-5 h-[340px] w-full max-w-[520px] rounded-2xl bg-gradient-to-b from-rose-50 via-white to-emerald-50" />
+                  <p className="text-[34px] font-black leading-tight text-red-500 sm:text-[40px]">VEJA COMO FUNCIONA A</p>
+                  <p className="text-[34px] font-black leading-tight text-red-500 sm:text-[40px]">GELATINA BARIÁTRICA</p>
+                  <div className="mx-auto mt-5 w-full max-w-[520px] overflow-hidden rounded-2xl border border-emerald-200">
+                    <Image
+                      src="/quiz/explicacao-gelatina.png"
+                      alt="Como funciona a gelatina bariátrica"
+                      width={1024}
+                      height={1024}
+                      sizes="(max-width: 640px) 88vw, 520px"
+                      className="h-auto w-full"
+                    />
+                  </div>
                 </div>
               </div>
             ) : current.id === "depoimento-claudia" ? (
               <div className="mx-auto max-w-[760px] space-y-5">
-                <div className="grid grid-cols-3 overflow-hidden rounded-2xl border border-emerald-600/20">
-                  <div className="h-[260px] bg-gradient-to-b from-rose-200 to-rose-100" />
-                  <div className="h-[260px] bg-gradient-to-b from-emerald-200 to-emerald-100" />
-                  <div className="h-[260px] bg-gradient-to-b from-blue-200 to-blue-100" />
+                <div className="overflow-hidden rounded-2xl border border-emerald-600/20">
+                  <Image
+                    src="/quiz/depoimento-claudia-transformacao-v2.png"
+                    alt="Transformação da Cláudia"
+                    width={1024}
+                    height={1024}
+                    sizes="(max-width: 768px) 94vw, 760px"
+                    className="h-auto w-full"
+                  />
                 </div>
 
                 <div className="rounded-2xl border border-emerald-600/20 bg-white p-5">
                   <div className="flex items-center gap-3">
-                    <div className="h-12 w-12 rounded-full bg-gradient-to-br from-pink-300 to-rose-200" />
+                    <div className="relative h-12 w-12 overflow-hidden rounded-full ring-1 ring-emerald-200">
+                      <Image src="/quiz/depoimento-claudia-rosto.png" alt="Cláudia" fill sizes="48px" className="object-cover" />
+                    </div>
                     <div>
-                      <p className="text-[34px] font-semibold leading-tight text-pg-ink">Cláudia</p>
-                      <p className="text-[28px] text-pg-ink/70">Porto</p>
+                      <p className="text-[23px] font-semibold leading-tight text-pg-ink sm:text-[28px]">Cláudia</p>
+                      <p className="text-[18px] text-pg-ink/70 sm:text-[22px]">Porto</p>
                     </div>
                   </div>
-                  <p className="mt-4 text-[33px] leading-tight text-pg-ink/90">
+                  <p className="mt-4 text-[18px] leading-snug text-pg-ink/90 sm:text-[22px]">
                     Já tinha experimentado várias abordagens para perder peso e nunca conseguia manter resultados.
                     Depois de incluir a Gelatina Emagrecedora na minha rotina, perdi 12 kg sem mudanças radicais e
                     passei a sentir muito mais controlo do apetite e menos ansiedade ao longo do dia.
                   </p>
-                  <p className="mt-3 text-[32px] text-yellow-500">★★★★★</p>
+                  <p className="mt-3 text-[24px] text-yellow-500 sm:text-[28px]">★★★★★</p>
                 </div>
               </div>
             ) : current.id === "peso-atual" ? (
@@ -802,7 +1231,7 @@ export default function QuizOfferView() {
                   />
                 </div>
                 <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-                  <p className="text-[35px] font-bold leading-tight text-pg-ink">
+                  <p className="text-[24px] font-bold leading-tight text-pg-ink sm:text-[28px]">
                     ✓ Baseado nisso, ajustaremos a dosagem ideal para os melhores resultados!
                   </p>
                 </div>
@@ -823,7 +1252,7 @@ export default function QuizOfferView() {
                   />
                 </div>
                 <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-                  <p className="text-[35px] font-bold leading-tight text-pg-ink">
+                  <p className="text-[24px] font-bold leading-tight text-pg-ink sm:text-[28px]">
                     ✓ Isso nos ajudará a calcular a quantidade exata dos ingredientes para seu corpo.
                   </p>
                 </div>
@@ -844,7 +1273,7 @@ export default function QuizOfferView() {
                   />
                 </div>
                 <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-                  <p className="text-[35px] font-bold leading-tight text-pg-ink">
+                  <p className="text-[24px] font-bold leading-tight text-pg-ink sm:text-[28px]">
                     ✓ Baseado nisso, ajustaremos a dosagem ideal para os melhores resultados!
                   </p>
                 </div>
@@ -903,7 +1332,16 @@ export default function QuizOfferView() {
                 }
               >
                 {current.options.map((option) => {
-                  const selected = answers[current.id]?.optionId === option.id;
+                  const selected =
+                    current.id === "goal"
+                      ? goalSelections.includes(option.id)
+                      : current.id === "dificuldade-peso"
+                        ? dificuldadeSelections.includes(option.id)
+                        : current.id === "beneficios"
+                          ? beneficiosSelections.includes(option.id)
+                          : current.id === "fruta-preferida"
+                            ? frutaSelections.includes(option.id)
+                        : answers[current.id]?.optionId === option.id;
                   return (
                     <button
                       key={option.id}
@@ -929,22 +1367,30 @@ export default function QuizOfferView() {
                             : current.id === "corpo-sonhos"
                               ? "relative min-h-[250px] overflow-hidden rounded-2xl border-2 p-0 transition"
                             : current.id === "dificuldade-peso"
-                              ? "relative min-h-[250px] overflow-hidden rounded-2xl border-2 p-0 transition"
+                              ? "relative min-h-[180px] overflow-hidden rounded-2xl border-2 p-0 transition sm:min-h-[210px]"
                             : current.id === "impede-emagrecer"
                               ? "relative min-h-[120px] overflow-hidden rounded-2xl border-2 p-0 transition"
                             : current.id === "beneficios"
-                              ? "relative min-h-[170px] overflow-hidden rounded-2xl border-2 p-0 transition"
+                              ? "relative min-h-[126px] overflow-hidden rounded-2xl border-2 p-0 transition sm:min-h-[138px]"
                             : current.id === "meta-quilos"
                             ? "relative min-h-[250px] overflow-hidden rounded-2xl border-2 p-0 transition"
                             : current.id === "sexo"
                             ? "relative min-h-[250px] overflow-hidden rounded-2xl border-2 p-0 transition"
                             : "flex min-h-[108px] items-center gap-4 rounded-2xl border-2 px-4 py-3 text-left transition",
                         selected
-                          ? "border-emerald-600 bg-emerald-50 ring-2 ring-emerald-200"
-                          : "border-emerald-600/90 bg-white hover:bg-emerald-50/50",
+                          ? current.id === "kilos"
+                            ? "border-emerald-600 bg-emerald-100 ring-2 ring-emerald-200"
+                            : current.id === "area-gordura"
+                              ? "border-emerald-600 bg-emerald-100 ring-2 ring-emerald-200"
+                            : "border-emerald-600 bg-emerald-50 ring-2 ring-emerald-200"
+                          : current.id === "kilos"
+                            ? "border-emerald-600/90 bg-emerald-50/60 hover:bg-emerald-100/70"
+                            : current.id === "area-gordura"
+                              ? "border-emerald-600/90 bg-emerald-50/60 hover:bg-emerald-100/70"
+                            : "border-emerald-600/90 bg-white hover:bg-emerald-50/50",
                       ].join(" ")}
                     >
-                      {selected ? (
+                      {selected && current.id !== "beneficios" ? (
                         <span className="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-600 text-sm font-bold text-white">
                           ✓
                         </span>
@@ -952,18 +1398,23 @@ export default function QuizOfferView() {
                       {current.id === "idade" ? (
                         <>
                           <div className="absolute inset-0 bg-gradient-to-b from-emerald-50 via-white to-white" />
-                          <div
-                            className={[
-                              "absolute left-1/2 top-6 h-36 w-[72%] -translate-x-1/2 rounded-xl",
-                              option.id === "18-26"
-                                ? "bg-gradient-to-r from-emerald-200 to-sky-200"
-                                : option.id === "27-38"
-                                  ? "bg-gradient-to-r from-orange-200 to-cyan-200"
-                                  : option.id === "39-50"
-                                    ? "bg-gradient-to-r from-pink-200 to-emerald-200"
-                                    : "bg-gradient-to-r from-blue-200 to-violet-200",
-                            ].join(" ")}
-                          />
+                          <div className="absolute left-1/2 top-6 h-36 w-[72%] -translate-x-1/2 overflow-hidden rounded-xl ring-1 ring-black/5">
+                            <Image
+                              src={
+                                option.id === "18-26"
+                                  ? "/quiz/idade-18-26.png"
+                                  : option.id === "27-38"
+                                    ? "/quiz/idade-27-38.png"
+                                    : option.id === "39-50"
+                                      ? "/quiz/idade-39-50.png"
+                                      : "/quiz/idade-46-plus.png"
+                              }
+                              alt={`Faixa etaria ${option.label}`}
+                              fill
+                              sizes="(max-width: 640px) 42vw, 220px"
+                              className="object-contain"
+                            />
+                          </div>
                           <span className="absolute bottom-5 left-1/2 -translate-x-1/2 text-lg font-medium text-pg-ink sm:text-xl">
                             {option.label}
                           </span>
@@ -971,16 +1422,21 @@ export default function QuizOfferView() {
                       ) : current.id === "tipo-corpo" ? (
                         <>
                           <div className="absolute inset-0 bg-white" />
-                          <div
-                            className={[
-                              "absolute left-8 top-1/2 h-16 w-16 -translate-y-1/2 rounded-md",
-                              option.id === "regular"
-                                ? "bg-gradient-to-b from-rose-200 to-red-300"
-                                : option.id === "flacido"
-                                  ? "bg-gradient-to-b from-red-200 to-red-300"
-                                  : "bg-gradient-to-b from-red-300 to-red-400",
-                            ].join(" ")}
-                          />
+                          <div className="absolute left-5 top-1/2 h-20 w-20 -translate-y-1/2 overflow-hidden rounded-md ring-1 ring-black/5">
+                            <Image
+                              src={
+                                option.id === "regular"
+                                  ? "/quiz/tipo-corpo-regular.png"
+                                  : option.id === "flacido"
+                                    ? "/quiz/tipo-corpo-flacido.png"
+                                    : "/quiz/tipo-corpo-sobrepeso.png"
+                              }
+                              alt={`Tipo de corpo ${option.label}`}
+                              fill
+                              sizes="80px"
+                              className="object-cover"
+                            />
+                          </div>
                           <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-xl font-medium text-pg-ink sm:text-2xl">
                             {option.label}
                           </span>
@@ -1024,26 +1480,28 @@ export default function QuizOfferView() {
                           <div className="absolute inset-0 bg-white" />
                           <span
                             className={[
-                              "absolute left-8 top-1/2 h-9 w-9 -translate-y-1/2 rounded-full border-2 border-emerald-600",
+                              "absolute left-4 top-1/2 h-7 w-7 -translate-y-1/2 rounded-full border-2 border-emerald-600 sm:left-5 sm:h-8 sm:w-8",
                               selected ? "bg-emerald-600 shadow-[inset_0_0_0_4px_white]" : "bg-white",
                             ].join(" ")}
                           />
-                          <span className="absolute left-1/2 top-10 -translate-x-1/2 text-6xl">
-                            {option.id === "escadas"
-                              ? "🤦"
-                              : option.id === "sentar"
-                                ? "🪑"
-                                : option.id === "agachar"
-                                  ? "🦵"
-                                  : option.id === "deitar"
-                                    ? "🛏️"
-                                    : option.id === "outros"
-                                      ? "😶"
-                                      : "✅"}
-                          </span>
-                          <span className="absolute bottom-5 left-1/2 w-[80%] -translate-x-1/2 text-center text-sm font-medium leading-tight text-pg-ink sm:text-base">
-                            {option.label}
-                          </span>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                            <span className="text-5xl sm:text-6xl">
+                              {option.id === "escadas"
+                                ? "🤦"
+                                : option.id === "sentar"
+                                  ? "🪑"
+                                  : option.id === "agachar"
+                                    ? "🦵"
+                                    : option.id === "deitar"
+                                      ? "🛏️"
+                                      : option.id === "outros"
+                                        ? "😶"
+                                        : "✅"}
+                            </span>
+                            <span className="w-[82%] whitespace-pre-line text-center text-[18px] font-medium leading-tight text-pg-ink sm:text-[22px]">
+                              {option.label}
+                            </span>
+                          </div>
                         </>
                       ) : current.id === "impede-emagrecer" ? (
                         <>
@@ -1059,25 +1517,26 @@ export default function QuizOfferView() {
                           <div className="absolute inset-0 bg-white" />
                           <span
                             className={[
-                              "absolute left-8 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full border-2 border-emerald-600",
+                              "absolute left-4 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full border-2 border-emerald-600 sm:left-5 sm:h-9 sm:w-9",
                               selected ? "bg-emerald-600 shadow-[inset_0_0_0_4px_white]" : "bg-white",
                             ].join(" ")}
                           />
-                          <span className="absolute left-24 right-5 top-1/2 -translate-y-1/2 text-left text-sm font-medium leading-tight text-pg-ink sm:text-base">
+                          <span className="absolute left-16 right-3 top-1/2 -translate-y-1/2 text-left text-[17px] font-medium leading-tight text-pg-ink sm:left-20 sm:text-[20px]">
                             {option.label}
                           </span>
                         </>
                       ) : current.id === "meta-quilos" ? (
                         <>
                           <div className="absolute inset-0 bg-gradient-to-b from-emerald-50 via-white to-white" />
-                          <div
-                            className={[
-                              "absolute left-1/2 top-6 h-32 w-[72%] -translate-x-1/2 rounded-xl",
-                              option.id === "sem-meta"
-                                ? "bg-gradient-to-r from-neutral-200 to-neutral-300"
-                                : "bg-gradient-to-r from-yellow-100 to-neutral-200",
-                            ].join(" ")}
-                          />
+                          <div className="absolute left-1/2 top-6 h-32 w-[72%] -translate-x-1/2 overflow-hidden rounded-xl ring-1 ring-black/5">
+                            <Image
+                              src="/quiz/meta-kilos.png"
+                              alt="Balança com fita métrica"
+                              fill
+                              sizes="(max-width: 640px) 42vw, 220px"
+                              className="object-contain"
+                            />
+                          </div>
                           <span className="absolute bottom-5 left-1/2 w-[88%] -translate-x-1/2 text-center text-sm font-medium leading-tight text-pg-ink sm:text-base">
                             {option.label}
                           </span>
@@ -1092,8 +1551,16 @@ export default function QuizOfferView() {
                                 : "bg-gradient-to-b from-sky-100 via-sky-50 to-white",
                             ].join(" ")}
                           />
-                          <div className="absolute left-1/2 top-6 h-36 w-24 -translate-x-1/2 rounded-2xl bg-neutral-300/70" />
-                          <span className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-md bg-emerald-500 px-4 py-1 text-xl font-bold text-white">
+                          <div className="absolute left-1/2 top-3 h-[188px] w-[138px] -translate-x-1/2 overflow-hidden rounded-xl ring-1 ring-black/5">
+                            <Image
+                              src={option.id === "mulher" ? "/quiz/sexo-mulher.png" : "/quiz/sexo-homem.png"}
+                              alt={option.id === "mulher" ? "Mulher" : "Homem"}
+                              fill
+                              sizes="138px"
+                              className="object-cover object-top"
+                            />
+                          </div>
+                          <span className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-md bg-emerald-500 px-4 py-1 text-xl font-bold text-white">
                             {option.label}
                           </span>
                         </>
@@ -1124,8 +1591,19 @@ export default function QuizOfferView() {
                       ) : current.id === "corpo-sonhos" ? (
                         <>
                           <div className="absolute inset-0 bg-white" />
-                          <div className="absolute left-1/2 top-5 h-36 w-24 -translate-x-1/2 rounded-2xl bg-gradient-to-b from-amber-100 via-rose-100 to-red-200" />
-                          <div className="absolute left-1/2 top-[112px] h-16 w-24 -translate-x-1/2 rounded-b-2xl bg-gradient-to-b from-red-300 to-red-400" />
+                          <div className="absolute left-1/2 top-4 h-[170px] w-[108px] -translate-x-1/2 overflow-hidden rounded-xl ring-1 ring-black/5">
+                            <Image
+                              src={
+                                option.id === "em-forma"
+                                  ? "/quiz/corpo-sonhos-em-forma.png"
+                                  : "/quiz/corpo-sonhos-natural.png"
+                              }
+                              alt={`Corpo dos sonhos ${option.label}`}
+                              fill
+                              sizes="(max-width: 640px) 34vw, 180px"
+                              className="object-cover object-top"
+                            />
+                          </div>
                           <span className="absolute bottom-6 left-1/2 -translate-x-1/2 text-lg font-medium text-pg-ink sm:text-xl">
                             {option.label}
                           </span>
@@ -1162,40 +1640,61 @@ export default function QuizOfferView() {
 
             {current.id === "sexo" ? (
               <div className="mt-8 rounded-2xl border-2 border-emerald-600/60 bg-emerald-50/35 p-5">
-                <p className="text-[30px] font-bold leading-tight text-pg-ink">
+                <p className="text-[24px] font-bold leading-tight text-pg-ink sm:text-[27px]">
                   As informacoes sao para fazer ajustes em seu plano exclusivo e personalizado.
                 </p>
-                <p className="mt-3 text-[30px] leading-relaxed text-pg-ink/90">
+                <p className="mt-3 text-[21px] leading-relaxed text-pg-ink/90 sm:text-[24px]">
                   O sexo biologico e um fator que afeta a sua TMB (taxa metabolica), que determina quantas calorias
                   voce queima por dia.
                 </p>
               </div>
             ) : null}
 
-            <div className="mt-10">
-              <button
-                type="button"
-                onClick={next}
-                disabled={
-                  (current.id !== "prova-mariana" &&
-                    current.id !== "explicacao-gelatina" &&
-                    current.id !== "depoimento-claudia" &&
-                    current.id !== "mensagem-receitinha" &&
-                    current.id !== "peso-atual" &&
-                    current.id !== "altura" &&
-                    current.id !== "peso-desejado" &&
-                    current.id !== "nome" &&
-                    !answers[current.id]) ||
-                  (current.id === "nome" && !leadName.trim()) ||
-                  (current.id === "peso-atual" && !leadWeight.trim()) ||
-                  (current.id === "altura" && !leadHeight.trim()) ||
-                  (current.id === "peso-desejado" && !leadDesiredWeight.trim())
-                }
-                className="flex h-14 w-full items-center justify-center rounded-2xl bg-emerald-600 px-6 text-lg font-semibold text-white disabled:opacity-50"
-              >
-                {current.id === "nome" ? "Enviar" : isLastQuestion ? "Ver resultado" : "Continuar"}
-              </button>
-            </div>
+            {current.id !== "sono-horas" &&
+            current.id !== "hidratacao" &&
+            current.id !== "impede-emagrecer" &&
+            current.id !== "kilos" &&
+            current.id !== "area-gordura" &&
+            current.id !== "impacto-vida" &&
+            current.id !== "aparencia-fisica" &&
+            current.id !== "tempo" &&
+            current.id !== "sexo" &&
+            current.id !== "idade" &&
+            current.id !== "meta-quilos" &&
+            current.id !== "tipo-corpo" ? (
+              <div className="mt-10">
+                <button
+                  type="button"
+                  onClick={next}
+                  disabled={
+                    (current.id !== "prova-mariana" &&
+                      current.id !== "explicacao-gelatina" &&
+                      current.id !== "depoimento-claudia" &&
+                      current.id !== "mensagem-receitinha" &&
+                      current.id !== "peso-atual" &&
+                      current.id !== "altura" &&
+                      current.id !== "peso-desejado" &&
+                      current.id !== "nome" &&
+                      ((current.id === "goal"
+                        ? goalSelections.length === 0
+                        : current.id === "dificuldade-peso"
+                          ? dificuldadeSelections.length === 0
+                          : current.id === "beneficios"
+                            ? beneficiosSelections.length === 0
+                            : current.id === "fruta-preferida"
+                              ? frutaSelections.length === 0
+                          : !answers[current.id]))) ||
+                    (current.id === "nome" && !leadName.trim()) ||
+                    (current.id === "peso-atual" && !leadWeight.trim()) ||
+                    (current.id === "altura" && !leadHeight.trim()) ||
+                    (current.id === "peso-desejado" && !leadDesiredWeight.trim())
+                  }
+                  className={`h-14 w-full text-lg ${CONTINUE_BUTTON_CLASS}`}
+                >
+                  {current.id === "nome" ? "Enviar" : isLastQuestion ? "Ver resultado" : "Continuar"}
+                </button>
+              </div>
+            ) : null}
           </section>
         ) : isAnalyzing ? (
           <section className="mx-auto max-w-[820px]">
@@ -1203,8 +1702,8 @@ export default function QuizOfferView() {
               <div className="mx-auto mb-2 h-24 w-24 rounded-full bg-gradient-to-b from-pink-200 via-pink-100 to-white p-2 shadow-sm">
                 <BrandLogo variant="auth" className="h-full w-full object-contain" />
               </div>
-              <p className="text-[48px] font-black leading-tight text-pink-600">Gelatina Bariátrica</p>
-              <p className="mt-2 text-[44px] font-black leading-tight text-pink-600">Estamos analisando suas respostas...</p>
+              <p className="text-[34px] font-black leading-tight text-pink-600 sm:text-[40px]">Gelatina Bariátrica</p>
+              <p className="mt-2 text-[30px] font-black leading-tight text-pink-600 sm:text-[36px]">Estamos analisando suas respostas...</p>
             </div>
 
             <div className="mx-auto mt-14 max-w-[640px]">
@@ -1220,88 +1719,270 @@ export default function QuizOfferView() {
           </section>
         ) : !showFinalSalesStep ? (
           <section className="mx-auto max-w-[430px] space-y-3">
+            {postPreSalesStep === 0 ? (
+              <>
             <div className="rounded-2xl border border-neutral-200 bg-white px-3 py-4 text-center">
-              <p className="text-[22px] font-black leading-tight text-pg-ink">ro, ouçe meu audio urgente !</p>
+              <p className="text-[22px] font-black leading-tight text-pg-ink">
+                {leadName.trim() ? `${leadName.trim()}, ouçe meu audio urgente !` : "Ouçe meu audio urgente !"}
+              </p>
               <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-2">
-                <audio controls preload="none" className="w-full">
-                  <source src="/audio/quiz-urgente.mp3" type="audio/mpeg" />
+                <audio
+                  ref={urgentAudioRef}
+                  controls
+                  autoPlay
+                  playsInline
+                  preload="auto"
+                  controlsList="nodownload noplaybackrate"
+                  onContextMenu={(event) => event.preventDefault()}
+                  className="w-full"
+                >
+                  <source src="/audio/quiz-urgente-oficial.mp3" type="audio/mpeg" />
                   O seu navegador não suporta áudio.
                 </audio>
               </div>
-            </div>
-
-            <div className="rounded-2xl bg-[#f5ffef] px-3 py-4 text-center">
-              <p className="text-[22px] font-black leading-tight text-pg-ink">
-                Você pode perder <span className="text-red-600">9KG a 15KG</span> em apenas <span className="text-emerald-600">3 semanas</span>
+              <p className="mt-4 text-[18px] font-black leading-tight text-pg-ink sm:text-[22px]">
+                <span className="text-red-600">⚠️ ATENÇÃO, este!</span> Pelas suas respostas, seu corpo tá no modo{" "}
+                <span className="text-red-600">ACÚMULO DE GORDURA</span>. Se não agir HOJE, essa situação tende a{" "}
+                <span className="text-red-600">PIORAR</span>.
               </p>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-xl border border-neutral-200 bg-white p-2">
-                  <p className="text-xs font-semibold">1 Semana</p>
-                  <p className="mt-1 text-sm font-black text-emerald-600">-5 KG</p>
+              <div
+                className="mt-4 rounded-2xl p-4 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]"
+                style={{
+                  backgroundImage:
+                    "linear-gradient(to right, #4dbf22 0%, #b57c18 54%, #ff1c28 100%), linear-gradient(to right, rgba(255,255,255,0.07), rgba(255,255,255,0.03), rgba(255,255,255,0.07)), repeating-linear-gradient(to right, transparent, transparent 42px, rgba(255,255,255,0.08) 42px, rgba(255,255,255,0.08) 43px), repeating-linear-gradient(to bottom, transparent, transparent 21px, rgba(255,255,255,0.06) 21px, rgba(255,255,255,0.06) 22px)",
+                }}
+              >
+                <div className="flex items-start justify-between gap-4 text-left">
+                  <p className="text-[17px] font-black leading-tight">
+                    Índice de massa corporal
+                    <br />
+                    (IMC)
+                  </p>
+                  <p className="max-w-[140px] text-[14px] font-black leading-tight">{bodyMassIndexStatusText}</p>
                 </div>
-                <div className="rounded-xl border border-neutral-200 bg-white p-2">
-                  <p className="text-xs font-semibold">2 Semana</p>
-                  <p className="mt-1 text-sm font-black text-emerald-600">-9 KG</p>
+
+                <div className="relative mt-5">
+                  <div className="relative h-[11px] rounded-full bg-[#f1df64]">
+                    <div
+                      className="absolute -top-11 -translate-x-1/2 whitespace-nowrap rounded-lg bg-white px-3 py-1 text-[12px] font-bold text-pg-ink shadow"
+                      style={{ left: `${bubblePointerLeft}%` }}
+                    >
+                      este, voce esta aqui
+                    </div>
+                    <div
+                      className="absolute top-1/2 h-[22px] w-[22px] -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white bg-transparent shadow-[0_0_0_1px_rgba(0,0,0,0.22)]"
+                      style={{ left: `${markerPointerLeft}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="rounded-xl border border-neutral-200 bg-white p-2">
-                  <p className="text-xs font-semibold">3 Semana</p>
-                  <p className="mt-1 text-sm font-black text-emerald-600">-15 KG</p>
+
+                <div className="mt-3 flex items-center justify-between text-[12px] font-black">
+                  <span>Saudável</span>
+                  <span>Acima do peso</span>
+                  <span>Sobrepeso</span>
                 </div>
+                <p className="mt-1 text-right text-[12px] font-semibold text-white/95">IMC: {animatedBmiValue.toFixed(1).replace(".", ",")}</p>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-lime-200 bg-[#f1ffd8] p-3">
-              <p className="text-[18px] font-black leading-tight text-pg-ink">⚡ Seus hábitos estão a travar o seu emagrecimento.</p>
-              <p className="mt-1 text-sm leading-snug text-pg-ink/80">
-                Mudanças simples no protocolo certo podem acelerar muito os seus resultados.
+            <div className="rounded-2xl bg-[#e5f665] px-6 py-5 text-pg-ink">
+              <p className="text-[40px] leading-none">〽️</p>
+              <p className="mt-1 text-[21px] font-black leading-tight">
+                Seu metabolismo pode estar te sabotando sem que você perceba!
+              </p>
+              <p className="mt-3 text-[18px] leading-snug text-pg-ink/90">
+                Mesmo estando no peso normal, seu corpo pode estar retendo toxinas e trabalhando de forma mais lenta,
+                dificultando a queima de gordura e deixando você com menos energia.
               </p>
             </div>
 
-            <div className="rounded-2xl border border-red-200 bg-[#ff5a5a] p-3 text-white">
-              <p className="text-[18px] font-black leading-tight">🚫 Principais riscos do seu perfil hoje:</p>
-              <ul className="mt-2 space-y-1 text-sm">
-                <li>• Metabolismo lento</li>
-                <li>• Acúmulo de gordura abdominal</li>
-                <li>• Dificuldade para manter resultados</li>
+            <div className="rounded-2xl bg-[#ff1717] px-6 py-5 text-white">
+              <p className="text-[22px] font-black leading-tight">❗️🚨 Alguns sinais de alerta:</p>
+              <ul className="mt-3 space-y-2 text-[17px] leading-snug">
+                <li>✗ Metabolismo lento e dificuldade para emagrecer mesmo comendo pouco.</li>
+                <li>✗ Cansaço constante e sensação de inchaço.</li>
+                <li>✗ Acúmulo de gordura em áreas específicas do corpo, principalmente na barriga.</li>
               </ul>
             </div>
 
+            <div className="rounded-2xl bg-[#8f8df2] px-6 py-5 text-white">
+              <p className="text-[21px] font-black leading-tight">♡ 💡 Com a Gelatina Bariátrica, seu corpo acelera a queima de</p>
+              <p className="mt-1 text-[21px] font-black leading-tight">gordura naturalmente!</p>
+              <p className="mt-3 text-[17px] leading-snug text-white/90">
+                A combinação ideal de ingredientes pode ativar seu metabolismo, reduzir a retenção de líquidos e aumentar sua
+                disposição.
+              </p>
+              <p className="mt-2 text-[17px] font-semibold leading-snug text-white/95">
+                ✅ Descubra agora como o Mounjaro de Pobre pode transformar seu corpo!
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-neutral-200 bg-white p-2.5">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl border border-neutral-200 bg-[#fafafa] p-2.5 text-center">
+                  <p className="text-[14px] font-extrabold leading-tight text-pg-ink">Índice de massa corporal: Muito alto!</p>
+                  <div className="mx-auto mt-2.5 grid h-32 w-32 place-items-center rounded-full bg-neutral-200">
+                    <div
+                      className="grid h-28 w-28 place-items-center rounded-full"
+                      style={{
+                        background:
+                          "conic-gradient(from 210deg, #ff1717 0deg, #d24a00 120deg, #9d7d00 220deg, #46b814 300deg, #e5e7eb 300deg 360deg)",
+                      }}
+                    >
+                      <div className="grid h-20 w-20 place-items-center rounded-full bg-white text-[18px] font-extrabold text-pg-ink">
+                        {adherenceScore}%
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="rounded-xl border border-neutral-200 bg-[#fafafa] px-2 py-3 text-center">
+                    <p className="text-[16px] font-black text-pg-ink">Sobrepeso</p>
+                  </div>
+                  <div className="relative h-[172px] overflow-hidden rounded-xl border border-neutral-200 bg-[#f3f3f3]">
+                    <Image src="/quiz/depoimento-claudia-rosto-v2.png" alt="Perfil corporal atual" fill className="object-contain object-bottom" />
+                  </div>
+                </div>
+              </div>
+
+              <p className="mt-4 text-center text-[20px] font-black leading-tight text-pg-ink">
+                Você pode perder de <span className="text-red-600">9KG a 15KG</span> em <span className="text-red-600">3 semanas</span> com as
+                gelatinas ideais!
+              </p>
+            </div>
+
             <div className="rounded-2xl border border-neutral-200 bg-white p-3">
-              <p className="text-center text-lg font-black text-pg-ink">Resultado da Avaliação</p>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <div className="rounded-xl border border-sky-200 bg-sky-50 p-2 text-center">
-                  <p className="text-[11px] text-pg-ink/70">Índice corporal</p>
-                  <p className="text-xl font-black text-pg-ink">{adherenceScore}%</p>
-                </div>
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-center">
-                  <p className="text-[11px] text-pg-ink/70">Risco atual</p>
-                  <p className="text-xl font-black text-pg-ink">ALTO</p>
-                </div>
+              <div className="grid grid-cols-3 divide-x divide-neutral-200">
+                {[
+                  { title: "1 Semana", inside: "7D", loss: "-5 KG", daysTop: "7 dias", daysBottom: "7 dias", fill: "22%" },
+                  { title: "2 Semands", inside: "14D", loss: "-9 KG", daysTop: "14 Dias", daysBottom: "14 Dias", fill: "46%" },
+                  { title: "3 Semands", inside: "21D", loss: "-15 KG", daysTop: "21 Dias", daysBottom: "21 Dias", fill: "70%" },
+                ].map((item) => (
+                  <div key={item.title} className="px-2 text-center">
+                    <p className="text-[12px] font-black text-pg-ink">{item.title}</p>
+                    <div className="mx-auto mt-3 h-[92px] w-8 overflow-hidden rounded-[10px] bg-[#d9dbe1]">
+                      <div className="flex h-full items-end justify-center">
+                        <div
+                          className="flex w-full items-center justify-center rounded-b-[10px] bg-emerald-600 text-[10px] font-black text-white"
+                          style={{ height: item.fill }}
+                        >
+                          {item.inside}
+                        </div>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-[13px] font-black text-pg-ink">{item.loss}</p>
+                    <p className="mt-1 text-[12px] font-semibold text-pg-ink/65">{item.daysBottom}</p>
+                  </div>
+                ))}
               </div>
             </div>
 
             <div className="rounded-2xl border border-neutral-200 bg-white p-3">
-              <p className="text-center text-base font-black text-pg-ink">Transformações reais</p>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <div className="h-32 rounded-lg bg-neutral-200" />
-                <div className="h-32 rounded-lg bg-neutral-300" />
-                <div className="h-32 rounded-lg bg-neutral-300" />
-                <div className="h-32 rounded-lg bg-neutral-200" />
+              <p className="text-center text-[22px] font-black text-pg-ink">Veja a transformação da Tania!</p>
+              <div className="relative mt-3 h-[250px] overflow-hidden rounded-md bg-neutral-100">
+                <Image src="/quiz/transformacao-tania-v2.png" alt="Transformação da Tania" fill className="object-contain object-center" />
               </div>
             </div>
+              </>
+            ) : null}
 
-            <div className="rounded-2xl border border-amber-300 bg-[#fff4dd] p-3 text-center">
-              <p className="text-base font-black text-pg-ink">Garantia de 30 dias</p>
-              <p className="mt-1 text-sm text-pg-ink/80">Se não notar resultados, devolvemos o valor.</p>
-            </div>
+            {postPreSalesStep === 1 ? (
+              <section className="rounded-2xl border border-neutral-200 bg-white p-4">
+                <h3 className="text-center text-2xl font-semibold leading-tight text-pg-ink">O que te faria manter o plano ativo?</h3>
+                <p className="mt-2 text-center text-lg text-pg-ink/80">Escolhe a opção que mais combina contigo.</p>
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {APOIO_OPTIONS.map((option) => {
+                    const selected = apoioSelection === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => selectApoioOption(option.id, option.score)}
+                        className={[
+                          "flex min-h-[108px] items-center gap-3 rounded-2xl border-2 px-4 py-3 text-left transition",
+                          selected
+                            ? "border-emerald-600 bg-emerald-100 ring-2 ring-emerald-200"
+                            : "border-emerald-600/90 bg-emerald-50/60 hover:bg-emerald-100/70",
+                        ].join(" ")}
+                      >
+                        <span
+                          className={[
+                            "h-8 w-8 shrink-0 rounded-full border-2 transition",
+                            selected ? "border-emerald-600 bg-emerald-600 shadow-[inset_0_0_0_4px_white]" : "border-emerald-600 bg-white",
+                          ].join(" ")}
+                        />
+                        <span className="break-words text-base font-medium leading-snug text-pg-ink sm:text-lg">{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
+
+            {postPreSalesStep === 2 ? (
+              <section className="rounded-2xl border border-neutral-200 bg-white p-4">
+                <h3 className="text-center text-2xl font-semibold leading-tight text-pg-ink">Qual o corpo dos seus sonhos?</h3>
+                <p className="mt-2 text-center text-lg text-pg-ink/80">Escolha a opção abaixo:</p>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  {CORPO_SONHOS_OPTIONS.map((option) => {
+                    const selected = corpoSonhosSelection === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => selectCorpoSonhosOption(option.id, option.score)}
+                        className={[
+                          "relative min-h-[250px] overflow-hidden rounded-2xl border-2 p-0 transition",
+                          selected
+                            ? "border-emerald-600 bg-emerald-50 ring-2 ring-emerald-200"
+                            : "border-emerald-600/90 bg-white hover:bg-emerald-50/50",
+                        ].join(" ")}
+                      >
+                        {selected ? (
+                          <span className="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-600 text-sm font-bold text-white">
+                            ✓
+                          </span>
+                        ) : null}
+                        <div className="absolute inset-0 bg-white" />
+                        <div className="absolute left-1/2 top-4 h-[170px] w-[108px] -translate-x-1/2 overflow-hidden rounded-xl ring-1 ring-black/5">
+                          <Image
+                            src={option.id === "em-forma" ? "/quiz/corpo-sonhos-em-forma.png" : "/quiz/corpo-sonhos-natural.png"}
+                            alt={`Corpo dos sonhos ${option.label}`}
+                            fill
+                            sizes="(max-width: 640px) 34vw, 180px"
+                            className="object-cover object-top"
+                          />
+                        </div>
+                        <span className="absolute bottom-6 left-1/2 -translate-x-1/2 text-lg font-medium text-pg-ink sm:text-xl">
+                          {option.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
+
+            {postPreSalesStep === 3 ? (
+              <section className="rounded-2xl border border-neutral-200 bg-white px-4 py-6 text-center">
+                <p className="text-[34px] font-semibold leading-tight text-pg-ink">
+                  Fique tranquila! Assim que você finalizar sua avaliação, você vai receber a sua receitinha no seu
+                  E-mail e no seu Whatsapp 💌
+                </p>
+              </section>
+            ) : null}
 
             <div className="space-y-2 pt-1">
               <button
                 type="button"
-                onClick={goToFinalSalesStep}
-                className="flex h-14 w-full items-center justify-center rounded-2xl bg-emerald-600 text-base font-black text-white"
+                onClick={continueAfterPreSales}
+                disabled={
+                  (postPreSalesStep === 1 && !apoioSelection) || (postPreSalesStep === 2 && !corpoSonhosSelection)
+                }
+                className={`h-14 w-full text-base font-black ${CONTINUE_BUTTON_CLASS}`}
               >
-                Quero Transformar Minha Vida Hoje!
+                {postPreSalesStep < 3 ? "Continuar" : "Quero Transformar Minha Vida Hoje!"}
               </button>
             </div>
           </section>

@@ -127,3 +127,21 @@
 .pg-badge {
   @apply inline-flex items-center rounded-full border border-pg-forest/10 bg-white/75 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-pg-forest/75;
 }
+
+.quiz-cta-pulse {
+  animation: quiz-cta-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes quiz-cta-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 8px 0 #0b8a61,
+      0 0 0 0 rgba(16, 185, 129, 0.35);
+  }
+  50% {
+    box-shadow:
+      0 8px 0 #0b8a61,
+      0 0 0 13px rgba(16, 185, 129, 0.3);
+  }
+}
