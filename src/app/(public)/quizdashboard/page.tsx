@@ -246,6 +246,13 @@ export default async function QuizDashboardPage({
     selectedColParams.length > 0 ? selectedColParams : [...QUIZ_STEP_COLUMNS],
   );
   const selectedStepColumns = QUIZ_STEP_COLUMNS.filter((col) => selectedColumnsSet.has(col));
+  const hasNonDefaultFilters =
+    range !== "30d" ||
+    Boolean(month) ||
+    funnelFilter !== "all" ||
+    sourceFilter !== "all" ||
+    q.length > 0 ||
+    selectedStepColumns.length !== QUIZ_STEP_COLUMNS.length;
 
   const whereParts: Prisma.Sql[] = [];
   if (range === "month" && month && /^\d{4}-\d{2}$/.test(month)) {
@@ -487,7 +494,20 @@ export default async function QuizDashboardPage({
         </header>
 
         <section className="rounded-2xl border border-neutral-200 bg-white/95 p-4 shadow-sm">
-          <details>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-xs text-pg-ink/70">
+              {hasNonDefaultFilters ? "Filtros ativos aplicados nesta vista." : "Sem filtros adicionais (vista padrão)."}
+            </p>
+            {hasNonDefaultFilters ? (
+              <a
+                href="/quizdashboard"
+                className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1 text-xs font-semibold text-pg-ink hover:bg-neutral-50"
+              >
+                Limpar filtros
+              </a>
+            ) : null}
+          </div>
+          <details open={hasNonDefaultFilters}>
             <summary className="cursor-pointer list-none text-lg font-semibold text-pg-ink">
               Filtros e exportacao
             </summary>
