@@ -154,6 +154,17 @@ function euro(value: number) {
   return new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(value);
 }
 
+function formatLisbonDateTime(value: string) {
+  return new Intl.DateTimeFormat("pt-PT", {
+    timeZone: "Europe/Lisbon",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 function statusBadge(active: boolean, activeLabel: string) {
   if (!active) {
     return <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-500">-</span>;
@@ -752,13 +763,7 @@ export default async function QuizDashboardPage({
                       <tr key={row.lead_key} className="odd:bg-white even:bg-emerald-50/20">
                         <td className="border border-neutral-200 px-2 py-2 font-semibold text-pg-ink">{row.lead_display}</td>
                         <td className="border border-neutral-200 px-2 py-2 text-pg-ink/80">
-                          {new Date(row.first_seen).toLocaleString("pt-PT", {
-                            day: "2-digit",
-                            month: "2-digit",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                          {formatLisbonDateTime(row.first_seen)}
                         </td>
                         <td className="border border-neutral-200 px-2 py-2">{statusBadge(row.quiz_started, "OK")}</td>
                         {selectedStepColumns.map((stepId) => (
