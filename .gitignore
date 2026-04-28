@@ -34,6 +34,11 @@ yarn-error.log*
 .env*
 !.env.example
 
+# cofre local de chaves (só secrets.env é real; example e README vão ao Git)
+local-credentials/secrets.env
+local-credentials/.env
+local-credentials/.env.*
+
 /prisma/*.db
 
 # vercel

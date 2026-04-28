@@ -4,15 +4,18 @@ import type Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { dispatchEventToIntegrations } from "@/lib/tracking/integrations";
-import { getPlanIdForStripePrice, getStripe } from "@/lib/stripe";
+import { getPlanIdForStripePriceId, getStripe } from "@/lib/stripe";
 import { IngestEventSchema } from "@/lib/tracking/schemas";
 
 export const runtime = "nodejs";
 
-function readPlanFromSubscription(subscription: { items?: { data?: Array<{ price?: { id?: string | null } | null }> } }) {
+async function readPlanFromSubscription(
+  stripe: Stripe,
+  subscription: { items?: { data?: Array<{ price?: { id?: string | null } | null }> } },
+) {
   const priceId = subscription.items?.data?.[0]?.price?.id;
   if (!priceId) return null;
-  return getPlanIdForStripePrice(priceId);
+  return getPlanIdForStripePriceId(stripe, priceId);
 }
 
 async function updatePlanByUserId(userId: string, plan: PlanId) {
@@ -200,7 +203,7 @@ export async function POST(request: Request) {
       case "customer.subscription.created":
       case "customer.subscription.updated": {
         const subscription = event.data.object;
-        const plan = readPlanFromSubscription(subscription);
+        const plan = await readPlanFromSubscription(stripe, subscription);
         if (!plan) break;
 
         const customerId = subscription.customer;

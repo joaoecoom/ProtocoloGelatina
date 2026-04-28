@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import type Stripe from "stripe";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -6,7 +7,11 @@ import { planUpdateSchema } from "@/lib/validators";
 import { getCurrentUser } from "@/lib/session";
 import { PLAN_CATALOG } from "@/lib/plans";
 import { IngestEventSchema } from "@/lib/tracking/schemas";
-import { getStripe, getStripePriceIdForPlan } from "@/lib/stripe";
+import {
+  getStripe,
+  resolveCheckoutHandlerError,
+  resolveStripeMonthlyPriceIdWithStripe,
+} from "@/lib/stripe";
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -22,12 +27,15 @@ export async function POST(request: Request) {
   }
 
   const plan = parsed.data.plan;
-  const priceId = getStripePriceIdForPlan(plan);
   const planMeta = PLAN_CATALOG[plan];
-  if (!priceId) {
+
+  if (!process.env.STRIPE_SECRET_KEY?.trim()) {
     return NextResponse.json(
-      { error: `Plano sem price configurado: ${plan}. Define STRIPE_PRICE_${plan}.` },
-      { status: 400 },
+      {
+        error:
+          "Pagamentos indisponíveis: STRIPE_SECRET_KEY em falta no servidor (.env.local).",
+      },
+      { status: 503 },
     );
   }
 
@@ -36,34 +44,67 @@ export async function POST(request: Request) {
   const proto = hdrs.get("x-forwarded-proto") ?? "https";
   const originFromRequest = host ? `${proto}://${host}` : null;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? originFromRequest ?? "http://localhost:3000";
-  const stripe = getStripe();
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    // Cobra só a entrada agora (item one-time) e inicia subscrição mensal após o trial.
-    line_items: [
-      { price: priceId, quantity: 1 },
-      {
-        price_data: {
-          currency: "eur",
-          product_data: {
-            name: `${planMeta.label} · Entrada ${planMeta.trialDays} dias`,
-          },
-          unit_amount: Math.round(planMeta.trialEuro * 100),
+
+  let session: Stripe.Checkout.Session;
+  try {
+    const stripe = getStripe();
+    const priceId = await resolveStripeMonthlyPriceIdWithStripe(stripe, plan);
+    if (!priceId) {
+      return NextResponse.json(
+        {
+          error: `Não há preço mensal para ${plan} nesta conta Stripe. Corre npm run stripe:seed com a MESMA STRIPE_SECRET_KEY que o servidor usa, ou define STRIPE_PRICE_${plan} no .env.local.`,
         },
-        quantity: 1,
+        { status: 400 },
+      );
+    }
+    session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      // Cobra só a entrada agora (item one-time) e inicia subscrição mensal após o trial.
+      line_items: [
+        {
+          price_data: {
+            currency: "eur",
+            product_data: {
+              name: "Protocolo Gelatina Inteligente",
+            },
+            unit_amount: Math.round(planMeta.trialEuro * 100),
+            tax_behavior: "exclusive",
+          },
+          quantity: 1,
+        },
+        { price: priceId, quantity: 1 },
+      ],
+      success_url: `${appUrl}/planos?checkout=success`,
+      cancel_url: `${appUrl}/planos?checkout=cancel`,
+      customer_email: user.email,
+      client_reference_id: user.id,
+      subscription_data: {
+        trial_period_days: Math.max(1, planMeta.trialDays),
+        metadata: {
+          userId: user.id,
+          plan,
+          billingModel: "intro_once_then_monthly",
+          session_id: tracking?.session_id ?? "",
+          visitor_id: tracking?.visitor_id ?? "",
+          anonymous_id: tracking?.anonymous_id ?? "",
+          funnel_id: tracking?.funnel_id ?? "app_checkout",
+          step_id: tracking?.step_id ?? "",
+          utm_source: tracking?.utm_source ?? "",
+          utm_medium: tracking?.utm_medium ?? "",
+          utm_campaign: tracking?.utm_campaign ?? "",
+          utm_content: tracking?.utm_content ?? "",
+          utm_term: tracking?.utm_term ?? "",
+          fbclid: tracking?.fbclid ?? "",
+          gclid: tracking?.gclid ?? "",
+          ttclid: tracking?.ttclid ?? "",
+        },
       },
-    ],
-    success_url: `${appUrl}/planos?checkout=success`,
-    cancel_url: `${appUrl}/planos?checkout=cancel`,
-    customer_email: user.email,
-    client_reference_id: user.id,
-    subscription_data: {
-      trial_period_days: Math.max(1, planMeta.trialDays),
-      metadata: {
-        userId: user.id,
-        plan,
-        billingModel: "intro_once_then_monthly",
-        session_id: tracking?.session_id ?? "",
+    metadata: {
+      userId: user.id,
+      plan,
+      monthlyPriceId: priceId,
+      trialDays: String(planMeta.trialDays),
+      session_id: tracking?.session_id ?? "",
         visitor_id: tracking?.visitor_id ?? "",
         anonymous_id: tracking?.anonymous_id ?? "",
         funnel_id: tracking?.funnel_id ?? "app_checkout",
@@ -77,25 +118,12 @@ export async function POST(request: Request) {
         gclid: tracking?.gclid ?? "",
         ttclid: tracking?.ttclid ?? "",
       },
-    },
-    metadata: {
-      userId: user.id,
-      plan,
-      session_id: tracking?.session_id ?? "",
-      visitor_id: tracking?.visitor_id ?? "",
-      anonymous_id: tracking?.anonymous_id ?? "",
-      funnel_id: tracking?.funnel_id ?? "app_checkout",
-      step_id: tracking?.step_id ?? "",
-      utm_source: tracking?.utm_source ?? "",
-      utm_medium: tracking?.utm_medium ?? "",
-      utm_campaign: tracking?.utm_campaign ?? "",
-      utm_content: tracking?.utm_content ?? "",
-      utm_term: tracking?.utm_term ?? "",
-      fbclid: tracking?.fbclid ?? "",
-      gclid: tracking?.gclid ?? "",
-      ttclid: tracking?.ttclid ?? "",
-    },
-  });
+    });
+  } catch (err) {
+    console.error("[checkout] checkout", err);
+    const { status, error } = resolveCheckoutHandlerError(err);
+    return NextResponse.json({ error }, { status });
+  }
 
   if (!session.url) {
     return NextResponse.json({ error: "Não foi possível criar checkout." }, { status: 500 });

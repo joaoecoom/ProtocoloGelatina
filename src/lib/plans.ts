@@ -21,7 +21,7 @@ export const PLAN_CATALOG: Record<
   }
 > = {
   FRONT: {
-    label: "Protocolo da Gelatina",
+    label: "Protocolo Gelatina Inteligente",
     trialEuro: 6.99,
     trialDays: 7,
     monthlyEuro: 29.99,

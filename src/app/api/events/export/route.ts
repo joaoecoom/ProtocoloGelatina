@@ -29,10 +29,20 @@ const QUIZ_STEP_COLUMNS = [
   "sono-horas",
   "hidratacao",
   "fruta-preferida",
+  "pre-sales",
   "corpo-sonhos",
   "mensagem-receitinha",
   "apoio",
   "final-sales",
+  "checkout-front",
+  "checkout-upsell-1",
+  "checkout-downsell-1-1",
+  "checkout-downsell-1-2",
+  "checkout-downsell-1-3",
+  "checkout-upsell-2",
+  "checkout-downsell-2-1",
+  "checkout-downsell-2-2",
+  "checkout-downsell-2-3",
 ] as const;
 
 const RANGE_TO_DAYS: Record<string, number> = { "24h": 1, "7d": 7, "30d": 30, "90d": 90 };

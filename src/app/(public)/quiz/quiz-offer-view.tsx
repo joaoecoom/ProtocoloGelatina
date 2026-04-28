@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import { useRouter, useSearchParams } from "next/navigation";
 import { BrandLogo } from "@/components/brand-logo";
 import { getTrackingContext, initTrackingContext, track, trackWithBeacon } from "@/lib/tracking";
 
@@ -10,6 +11,31 @@ type QuizQuestion = {
   title: string;
   options: { id: string; label: string; score: number; description?: string; icon?: string }[];
 };
+
+const PRE_SALES_VIDEO_SRC = "/video/02.mp4";
+
+function formatLeadKgDisplay(value: string, fallback: string): string {
+  const normalized = value.trim().replace(/\s/g, "").replace(",", ".");
+  const n = Number.parseFloat(normalized);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  const hasFraction = Math.abs(n - Math.round(n)) > 0.001;
+  return n.toLocaleString("pt-BR", { maximumFractionDigits: hasFraction ? 1 : 0 });
+}
+
+function PlanoIncluiCheckIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="9.25" stroke="currentColor" strokeWidth="1.35" />
+      <path
+        d="M7.5 12.2 10.3 15 16.5 8.8"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 const QUESTIONS: QuizQuestion[] = [
   {
@@ -268,7 +294,26 @@ const CORPO_SONHOS_OPTIONS = [
   { id: "em-forma", label: "Em forma", score: 3 },
 ] as const;
 
+const RESULTADOS_CAROUSEL_SLIDES = [
+  {
+    src: "/quiz/resultados-carousel-1.jpg",
+    width: 682,
+    height: 1024,
+    alt: "Depoimento — transformação antes e depois com o protocolo (1 de 2)",
+  },
+  {
+    src: "/quiz/resultados-carousel-2.jpg",
+    width: 681,
+    height: 1024,
+    alt: "Depoimento — transformação antes e depois com o protocolo (2 de 2)",
+  },
+] as const;
+
 export default function QuizOfferView() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const checkoutDevMock = searchParams.get("checkout") === "dev-mock";
+
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, { optionId: string; score: number }>>({});
   const [goalSelections, setGoalSelections] = useState<string[]>([]);
@@ -289,7 +334,8 @@ export default function QuizOfferView() {
   const [nextStepAfterAnalyzing, setNextStepAfterAnalyzing] = useState<number | null>(null);
   const [animatedBmiPointer, setAnimatedBmiPointer] = useState(6);
   const [animatedBmiValue, setAnimatedBmiValue] = useState(18.5);
-  const urgentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [resultadosCarouselIndex, setResultadosCarouselIndex] = useState(0);
+  const preSalesVideoRef = useRef<HTMLVideoElement | null>(null);
   const hasTrackedLandingRef = useRef(false);
 
   const currentQuestionIndex = step - 1;
@@ -473,14 +519,15 @@ export default function QuizOfferView() {
   }, [isDone, showFinalSalesStep, bodyMassIndexPointerTarget, bodyMassIndexValueTarget]);
 
   useEffect(() => {
-    if (!isDone || showFinalSalesStep) return;
-    const audio = urgentAudioRef.current;
-    if (!audio) return;
-    audio.currentTime = 0;
-    void audio.play().catch(() => {
-      // Browser pode bloquear autoplay em alguns cenarios.
+    if (!isDone || showFinalSalesStep || postPreSalesStep !== 0) return;
+    const video = preSalesVideoRef.current;
+    if (!video) return;
+    video.muted = false;
+    video.currentTime = 0;
+    void video.play().catch(() => {
+      // Safari/iOS por vezes bloqueia autoplay com som; o utilizador já interagiu no quiz.
     });
-  }, [isDone, showFinalSalesStep]);
+  }, [isDone, showFinalSalesStep, postPreSalesStep]);
 
   useEffect(() => {
     if (!isAnalyzing) return;
@@ -909,7 +956,8 @@ export default function QuizOfferView() {
     });
     const trackingContext = getTrackingContext();
     try {
-      const response = await fetch("/api/stripe/checkout-guest", {
+      // Pre-aquece o clientSecret antes de navegar para reduzir latência percebida.
+      const response = await fetch("/api/stripe/elements-guest-subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -931,19 +979,11 @@ export default function QuizOfferView() {
           },
         }),
       });
-
-      if (!response.ok) {
-        const data = (await response.json().catch(() => ({}))) as { error?: string };
-        setCheckoutError(data.error ?? "Nao foi possivel abrir o checkout.");
-        return;
+      const data = (await response.json().catch(() => ({}))) as { clientSecret?: string };
+      if (response.ok && data.clientSecret) {
+        sessionStorage.setItem("quiz_checkout_client_secret", data.clientSecret);
       }
-
-      const data = (await response.json()) as { url?: string };
-      if (!data.url) {
-        setCheckoutError("Sessao de checkout invalida.");
-        return;
-      }
-      window.location.assign(data.url);
+      router.push("/quiz/checkout");
     } catch {
       setCheckoutError("Falha ao iniciar checkout. Tenta novamente.");
     } finally {
@@ -954,6 +994,24 @@ export default function QuizOfferView() {
   return (
     <main className="min-h-dvh bg-white px-4 pb-14 pt-7 sm:px-6">
       <div className="mx-auto w-full max-w-5xl">
+        {checkoutDevMock ? (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm">
+            <p className="font-semibold">Modo desenvolvimento — checkout simulado</p>
+            <p className="mt-1 text-amber-900/90">
+              Não há pagamento real. Para Stripe a sério, coloca{" "}
+              <code className="rounded bg-amber-100/80 px-1 py-0.5 text-xs">STRIPE_SECRET_KEY</code> no{" "}
+              <code className="rounded bg-amber-100/80 px-1 py-0.5 text-xs">.env.local</code> e corre{" "}
+              <code className="rounded bg-amber-100/80 px-1 py-0.5 text-xs">npm run stripe:seed</code>.
+            </p>
+            <button
+              type="button"
+              className="mt-3 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100/50"
+              onClick={() => router.replace("/quiz")}
+            >
+              Fechar aviso
+            </button>
+          </div>
+        ) : null}
         {SHOW_STEP_DEBUG_NAV ? (
           <div className="mb-4 flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
             <button
@@ -1096,7 +1154,7 @@ export default function QuizOfferView() {
                   Qual é o seu peso desejado?
                 </h1>
               ) : current.id === "mensagem-receitinha" ? (
-                <h1 className="mx-auto max-w-[760px] text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
+                <h1 className="mx-auto max-w-[560px] text-balance text-sm font-medium leading-relaxed text-pg-ink sm:text-base">
                   Fique tranquila! Assim que você finalizar sua avaliação, você vai receber a sua receitinha no seu
                   E-mail e no seu Whatsapp 💌
                 </h1>
@@ -1723,22 +1781,23 @@ export default function QuizOfferView() {
               <>
             <div className="rounded-2xl border border-neutral-200 bg-white px-3 py-4 text-center">
               <p className="text-[22px] font-black leading-tight text-pg-ink">
-                {leadName.trim() ? `${leadName.trim()}, ouçe meu audio urgente !` : "Ouçe meu audio urgente !"}
+                {leadName.trim()
+                  ? `${leadName.trim()}, veja e ouça minha mensagem urgente!`
+                  : "Veja e ouça minha mensagem urgente!"}
               </p>
-              <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-2">
-                <audio
-                  ref={urgentAudioRef}
-                  controls
-                  autoPlay
-                  playsInline
-                  preload="auto"
-                  controlsList="nodownload noplaybackrate"
-                  onContextMenu={(event) => event.preventDefault()}
-                  className="w-full"
-                >
-                  <source src="/audio/quiz-urgente-oficial.mp3" type="audio/mpeg" />
-                  O seu navegador não suporta áudio.
-                </audio>
+              <div className="mx-auto mt-3 w-full max-w-[300px] overflow-hidden rounded-2xl border border-neutral-200 bg-black shadow-sm sm:max-w-[320px]">
+                <div className="aspect-[9/16] w-full">
+                  <video
+                    ref={preSalesVideoRef}
+                    className="h-full w-full object-cover object-center"
+                    autoPlay
+                    playsInline
+                    preload="auto"
+                    onContextMenu={(event) => event.preventDefault()}
+                  >
+                    <source src={PRE_SALES_VIDEO_SRC} type="video/mp4" />
+                  </video>
+                </div>
               </div>
               <p className="mt-4 text-[18px] font-black leading-tight text-pg-ink sm:text-[22px]">
                 <span className="text-red-600">⚠️ ATENÇÃO, este!</span> Pelas suas respostas, seu corpo tá no modo{" "}
@@ -1966,7 +2025,7 @@ export default function QuizOfferView() {
 
             {postPreSalesStep === 3 ? (
               <section className="rounded-2xl border border-neutral-200 bg-white px-4 py-6 text-center">
-                <p className="text-[34px] font-semibold leading-tight text-pg-ink">
+                <p className="mx-auto max-w-[560px] text-sm font-medium leading-relaxed text-pg-ink sm:text-base">
                   Fique tranquila! Assim que você finalizar sua avaliação, você vai receber a sua receitinha no seu
                   E-mail e no seu Whatsapp 💌
                 </p>
@@ -2000,56 +2059,173 @@ export default function QuizOfferView() {
 
             <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
               <div className="grid grid-cols-2 divide-x divide-neutral-200">
-                <div className="p-3 text-center">
-                  <p className="text-xl font-black">ANTES</p>
-                  <div className="mx-auto mt-2 h-48 w-36 rounded-xl bg-neutral-300" />
-                  <p className="mt-2 text-base font-bold leading-tight text-red-500 sm:text-lg">
-                    Esta é você com 143 kg, antes da Gelatina Emagrecedora
+                <div className="flex flex-col items-center p-4 text-center">
+                  <div className="relative mx-auto h-48 w-36 shrink-0 overflow-hidden rounded-xl bg-neutral-200">
+                    <Image
+                      src="/quiz/final-sales-antes.png"
+                      alt="Antes da transformação"
+                      width={144}
+                      height={192}
+                      className="h-full w-full object-cover object-top"
+                    />
+                  </div>
+                  <p className="mt-4 text-sm font-bold leading-snug text-pg-ink sm:text-[15px]">
+                    Esta é você com{" "}
+                    <span className="font-black text-red-500">
+                      {formatLeadKgDisplay(leadWeight, "143")} kg
+                    </span>
+                    , antes da Gelatina Emagrecedora
                   </p>
-                  <div className="mt-3 h-3 rounded-full bg-red-400" />
-                  <p className="mt-2 rounded-xl bg-red-500 px-2 py-2 text-sm font-black text-white sm:text-base">Riscos de doenças Alto</p>
+                  <div className="relative mx-auto mt-4 h-4 w-full max-w-[152px]">
+                    <div className="absolute inset-0 rounded-full bg-red-200" />
+                    <div className="absolute inset-y-0 left-0 w-full rounded-full bg-red-500" />
+                    <div
+                      className="absolute right-0 top-1/2 z-10 h-7 w-7 -translate-y-1/2 translate-x-1/2 rounded-full border-[3px] border-white bg-red-500 shadow-md"
+                      aria-hidden
+                    />
+                  </div>
+                  <div className="mt-4 flex w-full max-w-[168px] flex-col items-center justify-center gap-1 rounded-2xl bg-red-500 px-3 py-3.5 text-white shadow-sm">
+                    <svg
+                      className="h-7 w-7 shrink-0"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M12 8v4" />
+                      <path d="M12 16h.01" />
+                    </svg>
+                    <span className="text-[13px] font-bold leading-tight sm:text-sm">Riscos de doenças</span>
+                    <span className="text-lg font-black leading-none sm:text-xl">Alto</span>
+                  </div>
                 </div>
-                <div className="p-3 text-center">
-                  <p className="text-xl font-black">DEPOIS</p>
-                  <div className="mx-auto mt-2 h-48 w-36 rounded-xl bg-neutral-200" />
-                  <p className="mt-2 text-base font-bold leading-tight text-emerald-600 sm:text-lg">
-                    E esta é você com 65 kg, depois de usar a gelatina ideal para o seu corpo
+                <div className="flex flex-col items-center p-4 text-center">
+                  <div className="relative mx-auto h-48 w-36 shrink-0 overflow-hidden rounded-xl bg-neutral-100">
+                    <Image
+                      src="/quiz/final-sales-depois.png"
+                      alt="Depois da transformação"
+                      width={144}
+                      height={192}
+                      className="h-full w-full object-cover object-top"
+                    />
+                  </div>
+                  <p className="mt-4 text-sm font-bold leading-snug text-pg-ink sm:text-[15px]">
+                    E esta é você com{" "}
+                    <span className="font-black text-emerald-600">
+                      {formatLeadKgDisplay(leadDesiredWeight, "65")} kg
+                    </span>
+                    , depois de usar a gelatina ideal para o seu corpo
                   </p>
-                  <div className="mt-3 h-3 rounded-full bg-emerald-500" />
-                  <p className="mt-2 rounded-xl bg-emerald-500 px-2 py-2 text-sm font-black text-white sm:text-base">Riscos de doenças Baixo</p>
+                  <div className="relative mx-auto mt-4 h-4 w-full max-w-[152px]">
+                    <div className="absolute inset-0 rounded-full bg-emerald-200/90" />
+                    <div className="absolute inset-y-0 left-0 w-full rounded-full bg-emerald-500" />
+                    <div
+                      className="absolute right-0 top-1/2 z-10 h-7 w-7 -translate-y-1/2 translate-x-1/2 rounded-full border-[3px] border-white bg-emerald-500 shadow-md"
+                      aria-hidden
+                    />
+                  </div>
+                  <div className="mt-4 flex w-full max-w-[168px] flex-col items-center justify-center gap-1 rounded-2xl bg-emerald-500 px-3 py-3.5 text-white shadow-sm">
+                    <svg
+                      className="h-7 w-7 shrink-0"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <path d="M7 10v12" />
+                      <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z" />
+                    </svg>
+                    <span className="text-[13px] font-bold leading-tight sm:text-sm">Riscos de doenças</span>
+                    <span className="text-lg font-black leading-none sm:text-xl">Baixo</span>
+                  </div>
                 </div>
               </div>
             </div>
 
             <div className="text-center">
-              <p className="text-2xl font-black text-pg-ink sm:text-3xl">Como funciona o Plano?</p>
+              <p className="text-2xl font-black sm:text-3xl">
+                <span className="text-[#32cd32]">Como funciona </span>
+                <span className="text-pg-ink">o Plano?</span>
+              </p>
               <p className="mt-2 text-base leading-relaxed text-pg-ink sm:text-lg">
-                Com base nas suas informações pessoais e objetivos, criamos um plano 100% personalizado para você usar
-                os ingredientes ideais para você. Nossa abordagem estratégica foi feita para que você consiga
-                potencializar sua perda de peso em 4 semanas, respeitando seu estilo de vida, sua rotina e o que você
-                gosta de comer.
+                <span className="font-bold text-[#32cd32]">Com base nas suas informações pessoais e objetivos, </span>
+                <span className="font-bold">
+                  criamos um plano 100% personalizado para você usar os ingredientes ideais para você.{" "}
+                </span>
+                <span className="font-normal">
+                  Nossa abordagem estratégica foi feita para que você consiga potencializar sua perda de peso em 4
+                  semanas, respeitando seu estilo de vida, sua rotina e o que você gosta de comer.
+                </span>
               </p>
             </div>
 
-            <div className="rounded-2xl border border-emerald-100 bg-[#f2ffe9] p-4">
-              <p className="text-center text-2xl font-black text-pg-ink sm:text-3xl">SEU PLANO INCLUI</p>
-              <div className="mt-3 space-y-3 text-base leading-relaxed text-pg-ink sm:text-lg">
-                <p>✅ <span className="font-black">Quais os ingredientes ideais para o seu corpo:</span> Baseado nas pesquisas mais recentes de universidades famosas como Havard, desenvolvemos o Protocolo Rotina da Gelatina Bariátrica, a forma mais eficaz de usar os melhores chás para perder peso de acordo com o seu corpo sem que você perca músculos ou sinta muita fome.</p>
-                <p>✅ <span className="font-black">Definição de metas diárias:</span> para você se manter no caminho certo</p>
-                <p>✅ <span className="font-black">Planilha de acompanhamento:</span> Saiba exatamente quanto você está evoluindo.</p>
-                <p>✅ <span className="font-black">+ 4 Bônus Exclusivos</span></p>
-              </div>
+            <div className="rounded-[22px] border border-[#dceee0] bg-[#f1f9f1] px-5 py-8 sm:px-9 sm:py-10">
+              <p className="mb-7 text-center text-xl font-black tracking-wide text-[#1b852e] sm:mb-8 sm:text-2xl">
+                SEU PLANO INCLUI
+              </p>
+              <ul className="m-0 list-none space-y-6 p-0 text-[#1a1a1a] sm:space-y-7">
+                <li className="flex gap-3 sm:gap-4">
+                  <PlanoIncluiCheckIcon className="mt-0.5 h-6 w-6 shrink-0 text-[#2d2d2d] sm:h-7 sm:w-7" />
+                  <p className="text-left text-[15px] leading-[1.55] sm:text-base">
+                    <span className="font-bold">Quais os ingredientes ideais para o seu corpo:</span>{" "}
+                    Baseado nas pesquisas mais recentes de universidades famosas como Havard, desenvolvemos o
+                    Protocolo{" "}
+                    <span className="font-bold">Rotina da Gelatina Bariátrica</span>, a forma mais eficaz de usar os
+                    melhores chás para perder peso de acordo com o seu corpo sem que você perca músculos ou sinta muita
+                    fome.
+                  </p>
+                </li>
+                <li className="flex gap-3 sm:gap-4">
+                  <PlanoIncluiCheckIcon className="mt-0.5 h-6 w-6 shrink-0 text-[#2d2d2d] sm:h-7 sm:w-7" />
+                  <p className="text-left text-[15px] leading-[1.55] sm:text-base">
+                    <span className="font-bold">Definição de metas diárias:</span> para você se manter no caminho certo
+                  </p>
+                </li>
+                <li className="flex gap-3 sm:gap-4">
+                  <PlanoIncluiCheckIcon className="mt-0.5 h-6 w-6 shrink-0 text-[#2d2d2d] sm:h-7 sm:w-7" />
+                  <p className="text-left text-[15px] leading-[1.55] sm:text-base">
+                    <span className="font-bold">Planilha de acompanhamento:</span> Saiba exatamente quanto você está
+                    evoluindo.
+                  </p>
+                </li>
+                <li className="flex gap-3 sm:gap-4">
+                  <PlanoIncluiCheckIcon className="mt-0.5 h-6 w-6 shrink-0 text-[#2d2d2d] sm:h-7 sm:w-7" />
+                  <p className="text-left text-[15px] font-bold leading-[1.55] sm:text-base">+ 4 Bônus Exclusivos</p>
+                </li>
+              </ul>
             </div>
 
             <p className="text-center text-2xl font-black leading-tight text-pg-ink sm:text-3xl">
               Ao Garantir Sua Rotina da Gelatina Bariátrica, <span className="text-emerald-500">Você Recebe Todos os Bônus de Presente!</span>
             </p>
 
-            <div className="space-y-2">
-              <div className="rounded-2xl bg-[#4caf50] p-3 text-base font-black leading-tight text-white sm:text-lg">Potencialize a Queima de Gordura</div>
-              <div className="rounded-2xl bg-[#d97706] p-3 text-base font-black leading-tight text-white sm:text-lg">Desinchar em 7 Dias</div>
-              <div className="rounded-2xl bg-[#a855f7] p-3 text-base font-black leading-tight text-white sm:text-lg">Anti-Efeito Sanfona</div>
-              <div className="rounded-2xl bg-[#e11d48] p-3 text-base font-black leading-tight text-white sm:text-lg">Metabolismo PRO 5x</div>
+            <div className="overflow-hidden rounded-2xl border border-neutral-200/90 bg-white shadow-sm">
+              <Image
+                src="/quiz/final-sales-bonus-banners.jpg"
+                alt="Bônus: queima de gordura, desinchar em 7 dias, anti-efeito sanfona e metabolismo"
+                width={681}
+                height={1024}
+                className="h-auto w-full object-contain object-top"
+                sizes="(max-width: 430px) 100vw, 430px"
+              />
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-pink-200/70 bg-white shadow-sm">
+              <Image
+                src="/quiz/gelatina-bariatrica-promo-banner.jpg"
+                alt="Protocolo Gelatina Inteligente — o segredo para emagrecer com prazer"
+                width={768}
+                height={1024}
+                className="h-auto w-full object-contain object-top"
+                sizes="(max-width: 430px) 100vw, 430px"
+              />
             </div>
 
             <div className="rounded-2xl border-2 border-emerald-600 bg-[#fffdf4] p-4 text-center">
@@ -2065,46 +2241,132 @@ export default function QuizOfferView() {
               Quem Usa <span className="text-emerald-500">Tem Resultado</span> 😉👇
             </p>
 
-            <div className="rounded-2xl border border-neutral-200 bg-white p-3">
-              <div className="h-56 rounded-xl bg-neutral-200" />
+            <div className="mt-3 space-y-3 rounded-2xl border border-neutral-200 bg-white p-3">
+              <div className="relative overflow-hidden rounded-xl bg-neutral-100">
+                <Image
+                  key={RESULTADOS_CAROUSEL_SLIDES[resultadosCarouselIndex].src}
+                  src={RESULTADOS_CAROUSEL_SLIDES[resultadosCarouselIndex].src}
+                  alt={RESULTADOS_CAROUSEL_SLIDES[resultadosCarouselIndex].alt}
+                  width={RESULTADOS_CAROUSEL_SLIDES[resultadosCarouselIndex].width}
+                  height={RESULTADOS_CAROUSEL_SLIDES[resultadosCarouselIndex].height}
+                  className="h-auto w-full object-contain object-top"
+                  sizes="(max-width: 430px) 100vw, 430px"
+                />
+                <button
+                  type="button"
+                  aria-label="Foto anterior"
+                  className="absolute left-1 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-neutral-200/80 bg-white/95 text-xl font-black leading-none text-pg-ink shadow-md backdrop-blur-[2px] sm:left-2"
+                  onClick={() =>
+                    setResultadosCarouselIndex(
+                      (i) => (i - 1 + RESULTADOS_CAROUSEL_SLIDES.length) % RESULTADOS_CAROUSEL_SLIDES.length,
+                    )
+                  }
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  aria-label="Próxima foto"
+                  className="absolute right-1 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-neutral-200/80 bg-white/95 text-xl font-black leading-none text-pg-ink shadow-md backdrop-blur-[2px] sm:right-2"
+                  onClick={() =>
+                    setResultadosCarouselIndex((i) => (i + 1) % RESULTADOS_CAROUSEL_SLIDES.length)
+                  }
+                >
+                  ›
+                </button>
+              </div>
+              <div className="flex justify-center gap-2 pb-0.5">
+                {RESULTADOS_CAROUSEL_SLIDES.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    aria-label={`Ver depoimento ${i + 1}`}
+                    aria-current={i === resultadosCarouselIndex}
+                    className={`h-2 rounded-full transition-all ${
+                      i === resultadosCarouselIndex ? "w-6 bg-emerald-600" : "w-2 bg-neutral-300"
+                    }`}
+                    onClick={() => setResultadosCarouselIndex(i)}
+                  />
+                ))}
+              </div>
             </div>
 
-            <div className="rounded-2xl border border-amber-200 bg-white p-4 text-center">
-              <p className="text-2xl font-black text-pg-ink sm:text-3xl">GARANTIA 30 DIAS</p>
-              <p className="mt-2 text-base leading-relaxed text-pg-ink sm:text-lg">
-                A compra deste material é totalmente sem risco para você.
+            <div className="mx-auto mt-5 flex w-full max-w-[300px] justify-center px-2">
+              <Image
+                src="/quiz/garantia-30d-selo.png"
+                alt="Garantia 30 dias"
+                width={500}
+                height={500}
+                className="h-auto w-full object-contain drop-shadow-[0_14px_28px_rgba(4,50,45,0.35)]"
+                sizes="(max-width: 430px) 100vw, 300px"
+              />
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-emerald-100 bg-white p-4 text-center shadow-sm">
+              <p className="text-base leading-relaxed text-pg-ink sm:text-lg">
+                A compra deste material é totalmente sem risco para si.
                 <br />
                 <br />
-                Se ele não atender às suas expectativas nos primeiros 30 dias após a compra, nós reembolsaremos todo o
-                valor que você pagou, sem fazer perguntas.
+                Se não corresponder totalmente às suas expectativas nos primeiros 30 dias após a compra, devolvemos o
+                valor integral que pagou, sem perguntas.
               </p>
             </div>
 
             <div className="rounded-2xl border border-neutral-200 bg-white p-4">
               <p className="text-xl font-black text-pg-ink">Isabela Soares</p>
-              <p className="text-sm text-pg-ink/70 sm:text-base">São Paulo, SP</p>
+              <p className="text-sm text-pg-ink/70 sm:text-base">Lisboa</p>
               <p className="mt-2 text-base leading-relaxed text-pg-ink sm:text-lg">
-                Eu literalmente estou sem palavras! Olha isso ai gente! Foram 2 meses e meio seguindo sem errar,
-                gente é incrível isso, não esperava, tô passada real! 😱😅
+                Literalmente fiquei sem palavras! Vejam isto! Foram dois meses e meio a seguir o plano à risca — é
+                incrível, não estava nada à espera, estou estupefacta! 😱😅
               </p>
               <p className="mt-2 text-2xl text-yellow-400">★★★★★</p>
             </div>
 
             <div className="rounded-2xl border border-neutral-200 bg-white p-4">
               <p className="text-xl font-black text-pg-ink">Bruna Gonçalves</p>
-              <p className="text-sm text-pg-ink/70 sm:text-base">Itajaí, SC</p>
+              <p className="text-sm text-pg-ink/70 sm:text-base">Porto</p>
               <p className="mt-2 text-base leading-relaxed text-pg-ink sm:text-lg">
-                Só eu sei o quanto eu sofri tentando emagrecer. Isso aqui foi único eu jurava que era balela, mas ta
-                ai o resultado, certeza que logo as canetas caem o preço, ninguem vai querer ficar se furando, isso
-                aqui é divino kkkk 🤯💃
+                Só eu sei o quanto sofri a tentar emagrecer. Isto foi diferente de tudo o que já tinha experimentado:
+                jurava que era treta, mas eis o resultado. Aposto que em breve as canetas baixam de preço — ninguém vai
+                querer andar sempre a picar-se — isto é mesmo do outro mundo. 🤯💃
               </p>
               <p className="mt-2 text-2xl text-yellow-400">★★★★★</p>
             </div>
 
-            <div className="rounded-2xl border-2 border-emerald-500 bg-white p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-lg font-black leading-tight text-pg-ink sm:text-xl">GELATINA BARIÁTRICA</p>
-                <p className="rounded-xl bg-[#eef7f2] px-4 py-2 text-2xl font-black text-pg-ink sm:text-3xl">R$37,90</p>
+            <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white p-2 shadow-sm">
+              <Image
+                src="/quiz/depoimento-antes-depois.jpg"
+                alt="Transformação de uma cliente — antes e depois"
+                width={1024}
+                height={819}
+                className="h-auto w-full rounded-xl object-contain"
+                sizes="(max-width: 430px) 100vw, 430px"
+              />
+            </div>
+
+            <div className="relative w-full rounded-full bg-gradient-to-br from-pink-300 via-rose-400 to-pink-600 p-[1.5px] shadow-[0_16px_48px_-14px_rgba(219,39,119,0.38),0_8px_24px_-8px_rgba(15,23,42,0.12)]">
+              <div
+                className="relative flex w-full items-center gap-3 rounded-full bg-white/98 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,1),inset_0_0_0_1px_rgba(255,255,255,0.5)] backdrop-blur-md sm:gap-5 sm:px-6 sm:py-[0.95rem]"
+                role="group"
+                aria-label="Protocolo Gelatina Inteligente, 6,99 euros"
+              >
+                <span className="relative shrink-0 drop-shadow-[0_4px_10px_rgba(219,39,119,0.28)]" aria-hidden>
+                  <Image
+                    src="/quiz/gelatina-premium-icon-v3.png"
+                    alt=""
+                    width={84}
+                    height={82}
+                    sizes="48px"
+                    className="h-11 w-auto object-contain object-center sm:h-[3.35rem]"
+                    style={{ width: "auto" }}
+                  />
+                </span>
+                <p className="min-w-0 flex-1 text-center text-[13px] font-bold leading-snug tracking-[0.04em] text-neutral-900 antialiased sm:text-[15px] sm:tracking-[0.055em]">
+                  Protocolo Gelatina Inteligente
+                </p>
+                <span className="shrink-0 rounded-full bg-gradient-to-b from-pink-50 via-pink-100/95 to-pink-100 px-3 py-1.5 text-base font-bold tabular-nums tracking-tight text-pink-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_2px_8px_-2px_rgba(219,39,119,0.2)] ring-1 ring-pink-200/70 sm:px-3.5 sm:py-2 sm:text-lg">
+                  6,99€
+                </span>
               </div>
             </div>
 

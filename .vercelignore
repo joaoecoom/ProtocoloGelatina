@@ -1,0 +1,2 @@
+# Nunca enviar cofre de credenciais para builds Vercel (usar env vars do dashboard)
+local-credentials

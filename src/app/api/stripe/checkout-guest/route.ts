@@ -1,10 +1,16 @@
 import { Prisma } from "@prisma/client";
+import type Stripe from "stripe";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PLAN_CATALOG } from "@/lib/plans";
-import { getStripe, getStripePriceIdForPlan } from "@/lib/stripe";
+import {
+  getStripe,
+  resolveCheckoutHandlerError,
+  resolveStripeMonthlyPriceIdWithStripe,
+} from "@/lib/stripe";
 import { IngestEventSchema } from "@/lib/tracking/schemas";
+import { shouldStripeQuizCheckoutDevMock } from "@/lib/stripe-dev-mock";
 import { planUpdateSchema } from "@/lib/validators";
 
 export async function POST(request: Request) {
@@ -16,14 +22,7 @@ export async function POST(request: Request) {
   }
 
   const plan = parsed.data.plan;
-  const priceId = getStripePriceIdForPlan(plan);
   const planMeta = PLAN_CATALOG[plan];
-  if (!priceId) {
-    return NextResponse.json(
-      { error: `Plano sem price configurado: ${plan}. Define STRIPE_PRICE_${plan}.` },
-      { status: 400 },
-    );
-  }
 
   const hdrs = await headers();
   const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host");
@@ -31,29 +30,78 @@ export async function POST(request: Request) {
   const originFromRequest = host ? `${proto}://${host}` : null;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? originFromRequest ?? "http://localhost:3000";
 
-  const stripe = getStripe();
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    line_items: [
-      { price: priceId, quantity: 1 },
+  if (shouldStripeQuizCheckoutDevMock()) {
+    return NextResponse.json({
+      url: `${appUrl}/quiz?checkout=dev-mock`,
+      dev_mock: true,
+    });
+  }
+
+  if (!process.env.STRIPE_SECRET_KEY?.trim()) {
+    return NextResponse.json(
       {
-        price_data: {
-          currency: "eur",
-          product_data: {
-            name: `${planMeta.label} · Entrada ${planMeta.trialDays} dias`,
-          },
-          unit_amount: Math.round(planMeta.trialEuro * 100),
-        },
-        quantity: 1,
+        error:
+          "Pagamentos indisponiveis: STRIPE_SECRET_KEY em falta no servidor (.env ou .env.local).",
       },
-    ],
-    success_url: `${appUrl}/quiz?checkout=success`,
-    cancel_url: `${appUrl}/quiz?checkout=cancel`,
-    subscription_data: {
-      trial_period_days: Math.max(1, planMeta.trialDays),
+      { status: 503 },
+    );
+  }
+
+  let session: Stripe.Checkout.Session;
+  try {
+    const stripe = getStripe();
+    const priceId = await resolveStripeMonthlyPriceIdWithStripe(stripe, plan);
+    if (!priceId) {
+      return NextResponse.json(
+        {
+          error: `Nao ha preco mensal para ${plan} nesta conta Stripe. Corre npm run stripe:seed com a MESMA STRIPE_SECRET_KEY que o dev server usa, ou define STRIPE_PRICE_${plan} no .env.local.`,
+        },
+        { status: 400 },
+      );
+    }
+    session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      line_items: [
+        {
+          price_data: {
+            currency: "eur",
+            product_data: {
+              name: "Protocolo Gelatina Inteligente",
+            },
+            unit_amount: Math.round(planMeta.trialEuro * 100),
+            tax_behavior: "exclusive",
+          },
+          quantity: 1,
+        },
+        { price: priceId, quantity: 1 },
+      ],
+      success_url: `${appUrl}/quiz?checkout=success`,
+      cancel_url: `${appUrl}/quiz?checkout=cancel`,
+      subscription_data: {
+        trial_period_days: Math.max(1, planMeta.trialDays),
+        metadata: {
+          plan,
+          billingModel: "intro_once_then_monthly",
+          source: "quiz_guest",
+          session_id: tracking?.session_id ?? "",
+          visitor_id: tracking?.visitor_id ?? "",
+          anonymous_id: tracking?.anonymous_id ?? "",
+          funnel_id: tracking?.funnel_id ?? "quiz_gelatina",
+          step_id: tracking?.step_id ?? "final-sales",
+          utm_source: tracking?.utm_source ?? "",
+          utm_medium: tracking?.utm_medium ?? "",
+          utm_campaign: tracking?.utm_campaign ?? "",
+          utm_content: tracking?.utm_content ?? "",
+          utm_term: tracking?.utm_term ?? "",
+          fbclid: tracking?.fbclid ?? "",
+          gclid: tracking?.gclid ?? "",
+          ttclid: tracking?.ttclid ?? "",
+        },
+      },
       metadata: {
         plan,
-        billingModel: "intro_once_then_monthly",
+        monthlyPriceId: priceId,
+        trialDays: String(planMeta.trialDays),
         source: "quiz_guest",
         session_id: tracking?.session_id ?? "",
         visitor_id: tracking?.visitor_id ?? "",
@@ -69,25 +117,12 @@ export async function POST(request: Request) {
         gclid: tracking?.gclid ?? "",
         ttclid: tracking?.ttclid ?? "",
       },
-    },
-    metadata: {
-      plan,
-      source: "quiz_guest",
-      session_id: tracking?.session_id ?? "",
-      visitor_id: tracking?.visitor_id ?? "",
-      anonymous_id: tracking?.anonymous_id ?? "",
-      funnel_id: tracking?.funnel_id ?? "quiz_gelatina",
-      step_id: tracking?.step_id ?? "final-sales",
-      utm_source: tracking?.utm_source ?? "",
-      utm_medium: tracking?.utm_medium ?? "",
-      utm_campaign: tracking?.utm_campaign ?? "",
-      utm_content: tracking?.utm_content ?? "",
-      utm_term: tracking?.utm_term ?? "",
-      fbclid: tracking?.fbclid ?? "",
-      gclid: tracking?.gclid ?? "",
-      ttclid: tracking?.ttclid ?? "",
-    },
-  });
+    });
+  } catch (err) {
+    console.error("[checkout-guest] checkout", err);
+    const { status, error } = resolveCheckoutHandlerError(err);
+    return NextResponse.json({ error }, { status });
+  }
 
   if (!session.url) {
     return NextResponse.json({ error: "Nao foi possivel criar checkout." }, { status: 500 });

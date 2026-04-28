@@ -94,10 +94,20 @@ const QUIZ_STEP_COLUMNS = [
   "sono-horas",
   "hidratacao",
   "fruta-preferida",
+  "pre-sales",
   "corpo-sonhos",
   "mensagem-receitinha",
   "apoio",
   "final-sales",
+  "checkout-front",
+  "checkout-upsell-1",
+  "checkout-downsell-1-1",
+  "checkout-downsell-1-2",
+  "checkout-downsell-1-3",
+  "checkout-upsell-2",
+  "checkout-downsell-2-1",
+  "checkout-downsell-2-2",
+  "checkout-downsell-2-3",
 ] as const;
 
 const STEP_LABELS: Record<(typeof QUIZ_STEP_COLUMNS)[number], string> = {
@@ -125,10 +135,20 @@ const STEP_LABELS: Record<(typeof QUIZ_STEP_COLUMNS)[number], string> = {
   "sono-horas": "Horas de Sono",
   hidratacao: "Hidratacao",
   "fruta-preferida": "Fruta Preferida",
+  "pre-sales": "Pré-venda",
   "corpo-sonhos": "Corpo de Sonho",
   "mensagem-receitinha": "Mensagem Receitinha",
   apoio: "Apoio",
   "final-sales": "Oferta Final",
+  "checkout-front": "Checkout - Oferta Principal",
+  "checkout-upsell-1": "Checkout - Upsell 1",
+  "checkout-downsell-1-1": "Checkout - Downsell 1.1",
+  "checkout-downsell-1-2": "Checkout - Downsell 1.2",
+  "checkout-downsell-1-3": "Checkout - Downsell 1.3",
+  "checkout-upsell-2": "Checkout - Upsell 2",
+  "checkout-downsell-2-1": "Checkout - Downsell 2.1",
+  "checkout-downsell-2-2": "Checkout - Downsell 2.2",
+  "checkout-downsell-2-3": "Checkout - Downsell 2.3",
 };
 
 function getStepLabel(stepId: string) {

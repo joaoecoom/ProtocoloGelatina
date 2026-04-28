@@ -14,10 +14,14 @@
     "db:studio": "prisma studio",
     "user:create": "tsx scripts/create-user.ts",
     "vapid:generate": "tsx scripts/generate-vapid.ts",
-    "supabase:auth-urls": "tsx scripts/ensure-supabase-auth-urls.ts"
+    "supabase:auth-urls": "tsx scripts/ensure-supabase-auth-urls.ts",
+    "stripe:seed": "tsx scripts/stripe-seed-prices.ts",
+    "env:sync": "node scripts/sync-local-credentials.mjs"
   },
   "dependencies": {
     "@prisma/client": "6.19.0",
+    "@stripe/react-stripe-js": "^6.3.0",
+    "@stripe/stripe-js": "^9.3.1",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.104.1",
     "next": "16.2.4",
