@@ -55,6 +55,8 @@ type LeadFunnelRow = {
   checkout_started: boolean;
   payment_success: boolean;
   step_answers: Record<string, string> | null;
+  offer_decisions: Record<string, string> | null;
+  offer_decision_path: string | null;
 };
 type LeadCountRow = { total: number };
 type StepDataHealthRow = {
@@ -103,11 +105,10 @@ const QUIZ_STEP_COLUMNS = [
   "checkout-upsell-1",
   "checkout-downsell-1-1",
   "checkout-downsell-1-2",
-  "checkout-downsell-1-3",
   "checkout-upsell-2",
   "checkout-downsell-2-1",
   "checkout-downsell-2-2",
-  "checkout-downsell-2-3",
+  "checkout-thank-you",
 ] as const;
 
 const STEP_LABELS: Record<(typeof QUIZ_STEP_COLUMNS)[number], string> = {
@@ -144,11 +145,10 @@ const STEP_LABELS: Record<(typeof QUIZ_STEP_COLUMNS)[number], string> = {
   "checkout-upsell-1": "Checkout - Upsell 1",
   "checkout-downsell-1-1": "Checkout - Downsell 1.1",
   "checkout-downsell-1-2": "Checkout - Downsell 1.2",
-  "checkout-downsell-1-3": "Checkout - Downsell 1.3",
   "checkout-upsell-2": "Checkout - Upsell 2",
   "checkout-downsell-2-1": "Checkout - Downsell 2.1",
   "checkout-downsell-2-2": "Checkout - Downsell 2.2",
-  "checkout-downsell-2-3": "Checkout - Downsell 2.3",
+  "checkout-thank-you": "Checkout - Obrigado",
 };
 
 function getStepLabel(stepId: string) {
@@ -197,6 +197,28 @@ function getLeadExitStepId(stepAnswers: Record<string, string>, hasPurchase: boo
   const reachedSteps = QUIZ_STEP_COLUMNS.filter((stepId) => Boolean(stepAnswers[stepId]));
   if (reachedSteps.length === 0) return null;
   return reachedSteps[reachedSteps.length - 1] ?? null;
+}
+
+const CHECKOUT_OFFER_STEPS = [
+  "checkout-upsell-1",
+  "checkout-downsell-1-1",
+  "checkout-downsell-1-2",
+  "checkout-upsell-2",
+  "checkout-downsell-2-1",
+  "checkout-downsell-2-2",
+] as const;
+
+function decisionBadge(decision: string | null | undefined) {
+  if (!decision) {
+    return <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-500">-</span>;
+  }
+  if (decision === "accepted") {
+    return <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">aceitou</span>;
+  }
+  if (decision === "rejected") {
+    return <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-800">rejeitou</span>;
+  }
+  return <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">{decision}</span>;
 }
 
 export default async function QuizDashboardPage({
@@ -424,6 +446,41 @@ export default async function QuizDashboardPage({
         FROM latest_steps
         GROUP BY lead_key
       ),
+      latest_decisions AS (
+        SELECT DISTINCT ON (lead_key, COALESCE(metadata_json->>'checkout_stage', step_id, 'unknown'))
+          lead_key,
+          COALESCE(metadata_json->>'checkout_stage', step_id, 'unknown') AS checkout_stage,
+          COALESCE(
+            metadata_json->>'decision',
+            CASE
+              WHEN event_name LIKE '%_accepted' THEN 'accepted'
+              WHEN event_name LIKE '%_rejected' THEN 'rejected'
+              ELSE event_name
+            END
+          ) AS decision,
+          "timestamp"
+        FROM scoped
+        WHERE event_name IN ('upsell_accepted', 'upsell_rejected', 'downsell_accepted', 'downsell_rejected')
+        ORDER BY lead_key, COALESCE(metadata_json->>'checkout_stage', step_id, 'unknown'), "timestamp" DESC
+      ),
+      decision_map AS (
+        SELECT
+          lead_key,
+          jsonb_object_agg(checkout_stage, decision) AS offer_decisions
+        FROM latest_decisions
+        GROUP BY lead_key
+      ),
+      decision_path AS (
+        SELECT
+          lead_key,
+          string_agg(
+            CONCAT(checkout_stage, ':', decision),
+            ' > '
+            ORDER BY "timestamp" ASC
+          ) AS offer_decision_path
+        FROM latest_decisions
+        GROUP BY lead_key
+      ),
       lead_rollup AS (
         SELECT
           lead_key,
@@ -445,9 +502,13 @@ export default async function QuizDashboardPage({
         lr.result_cta_clicked,
         lr.checkout_started,
         lr.payment_success,
-        sm.step_answers
+        sm.step_answers,
+        dm.offer_decisions,
+        dp.offer_decision_path
       FROM lead_rollup lr
       LEFT JOIN step_map sm ON sm.lead_key = lr.lead_key
+      LEFT JOIN decision_map dm ON dm.lead_key = lr.lead_key
+      LEFT JOIN decision_path dp ON dp.lead_key = lr.lead_key
       ORDER BY lr.first_seen DESC
       LIMIT ${perPage}
       OFFSET ${offset}
@@ -514,6 +575,31 @@ export default async function QuizDashboardPage({
   for (const col of selectedStepColumns) baseParams.append("col", col);
   const exportParams = new URLSearchParams(baseParams);
   exportParams.set("format", "csv");
+
+  const offerDecisionRollup = new Map<string, { accepted: number; rejected: number }>();
+  for (const row of leadFunnelRows) {
+    const decisions = row.offer_decisions ?? {};
+    for (const [stage, decision] of Object.entries(decisions)) {
+      if (decision !== "accepted" && decision !== "rejected") continue;
+      const current = offerDecisionRollup.get(stage) ?? { accepted: 0, rejected: 0 };
+      if (decision === "accepted") current.accepted += 1;
+      if (decision === "rejected") current.rejected += 1;
+      offerDecisionRollup.set(stage, current);
+    }
+  }
+
+  function decisionRate(stage: string) {
+    const totals = offerDecisionRollup.get(stage) ?? { accepted: 0, rejected: 0 };
+    const base = totals.accepted + totals.rejected;
+    const rate = base === 0 ? 0 : (totals.accepted / base) * 100;
+    return { ...totals, rate };
+  }
+
+  const upsell1Rate = decisionRate("upsell1");
+  const upsell2Rate = decisionRate("upsell2");
+  const topRejection = Array.from(offerDecisionRollup.entries())
+    .map(([stage, totals]) => ({ stage, rejected: totals.rejected }))
+    .sort((a, b) => b.rejected - a.rejected)[0] ?? { stage: "-", rejected: 0 };
 
   return (
     <main className="min-h-dvh bg-gradient-to-b from-emerald-50/50 via-white to-neutral-50 px-4 py-8 sm:px-6">
@@ -674,6 +760,28 @@ export default async function QuizDashboardPage({
           </div>
         </section>
 
+        <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+            <p className="text-xs text-pg-ink/65">Taxa de aceitação · Upsell 1</p>
+            <p className="mt-1 text-2xl font-bold text-pg-ink">{upsell1Rate.rate.toFixed(2)}%</p>
+            <p className="mt-1 text-xs text-pg-ink/70">
+              Aceites {fmt(upsell1Rate.accepted)} · Rejeições {fmt(upsell1Rate.rejected)}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+            <p className="text-xs text-pg-ink/65">Taxa de aceitação · Upsell 2</p>
+            <p className="mt-1 text-2xl font-bold text-pg-ink">{upsell2Rate.rate.toFixed(2)}%</p>
+            <p className="mt-1 text-xs text-pg-ink/70">
+              Aceites {fmt(upsell2Rate.accepted)} · Rejeições {fmt(upsell2Rate.rejected)}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+            <p className="text-xs text-pg-ink/65">Top ponto de rejeição</p>
+            <p className="mt-1 text-lg font-bold text-pg-ink">{getStepLabel(topRejection.stage)}</p>
+            <p className="mt-1 text-xs text-pg-ink/70">Rejeições: {fmt(topRejection.rejected)}</p>
+          </div>
+        </section>
+
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm lg:col-span-2">
             <h2 className="text-lg font-semibold text-pg-ink">Funil principal (sessões)</h2>
@@ -765,19 +873,26 @@ export default async function QuizDashboardPage({
                   ))}
                   <th className="border border-neutral-200 px-2 py-2 text-left font-semibold">Resultado CTA</th>
                   <th className="border border-neutral-200 px-2 py-2 text-left font-semibold">Checkout</th>
+                  <th className="border border-neutral-200 px-2 py-2 text-left font-semibold">Decisões de oferta</th>
+                  {CHECKOUT_OFFER_STEPS.map((stepId) => (
+                    <th key={stepId} className="border border-neutral-200 px-2 py-2 text-left font-semibold">
+                      {getStepLabel(stepId)}
+                    </th>
+                  ))}
                   <th className="border border-neutral-200 px-2 py-2 text-left font-semibold">Compra</th>
                 </tr>
               </thead>
               <tbody>
                 {leadFunnelRows.length === 0 ? (
                   <tr>
-                    <td colSpan={6 + selectedStepColumns.length} className="border border-neutral-200 px-3 py-6 text-center text-pg-ink/70">
+                    <td colSpan={7 + selectedStepColumns.length + CHECKOUT_OFFER_STEPS.length} className="border border-neutral-200 px-3 py-6 text-center text-pg-ink/70">
                       Sem leads no período/filtro selecionado.
                     </td>
                   </tr>
                 ) : (
                   leadFunnelRows.map((row) => {
                     const stepAnswers = row.step_answers ?? {};
+                    const offerDecisions = row.offer_decisions ?? {};
                     const exitStepId = getLeadExitStepId(stepAnswers, row.payment_success);
                     return (
                       <tr key={row.lead_key} className="odd:bg-white even:bg-emerald-50/20">
@@ -800,6 +915,14 @@ export default async function QuizDashboardPage({
                         ))}
                         <td className="border border-neutral-200 px-2 py-2">{statusBadge(row.result_cta_clicked, "clicked")}</td>
                         <td className="border border-neutral-200 px-2 py-2">{statusBadge(row.checkout_started, "started")}</td>
+                        <td className="border border-neutral-200 px-2 py-2 text-xs text-pg-ink/80">
+                          {row.offer_decision_path ? row.offer_decision_path : "-"}
+                        </td>
+                        {CHECKOUT_OFFER_STEPS.map((stepId) => (
+                          <td key={`${row.lead_key}-decision-${stepId}`} className="border border-neutral-200 px-2 py-2">
+                            {decisionBadge(offerDecisions[stepId])}
+                          </td>
+                        ))}
                         <td className="border border-neutral-200 px-2 py-2">{statusBadge(row.payment_success, "paid")}</td>
                       </tr>
                     );

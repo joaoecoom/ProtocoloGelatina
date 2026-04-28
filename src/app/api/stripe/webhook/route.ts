@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { dispatchEventToIntegrations } from "@/lib/tracking/integrations";
 import { getPlanIdForStripePriceId, getStripe } from "@/lib/stripe";
+import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { IngestEventSchema } from "@/lib/tracking/schemas";
 
 export const runtime = "nodejs";
@@ -26,10 +27,85 @@ async function updatePlanByUserId(userId: string, plan: PlanId) {
 }
 
 async function updatePlanByEmail(email: string, plan: PlanId) {
-  await prisma.user.update({
-    where: { email: email.toLowerCase() },
-    data: { plan },
-  });
+  await prisma.user
+    .update({
+      where: { email: email.toLowerCase() },
+      data: { plan },
+    })
+    .catch(() => undefined);
+}
+
+function isPlanId(value: string | undefined | null): value is PlanId {
+  return value === "FRONT" || value === "DS3_UP2";
+}
+
+async function ensurePurchaseAccess(params: { email: string | null | undefined; plan?: PlanId | null }) {
+  const rawEmail = params.email?.trim().toLowerCase();
+  if (!rawEmail || !rawEmail.includes("@")) return;
+
+  const defaultPassword = process.env.PURCHASE_DEFAULT_PASSWORD?.trim() || "123456";
+  const displayName = rawEmail.split("@")[0] || "Cliente";
+
+  let authUserId: string | null = null;
+
+  try {
+    const supabaseAdmin = createServiceRoleClient();
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email: rawEmail,
+      password: defaultPassword,
+      email_confirm: true,
+      user_metadata: {
+        name: displayName,
+        source: "stripe_purchase_auto_access",
+      },
+    });
+
+    if (!error && data.user?.id) {
+      authUserId = data.user.id;
+    } else if (error && !/already|registered|exists/i.test(error.message)) {
+      console.warn("[stripe/webhook] createUser failed", error.message);
+    }
+  } catch (error) {
+    console.warn("[stripe/webhook] supabase admin unavailable", error);
+  }
+
+  if (!authUserId) {
+    const existing = await prisma.user
+      .findUnique({ where: { email: rawEmail }, select: { id: true } })
+      .catch(() => null);
+    authUserId = existing?.id ?? null;
+  }
+
+  if (authUserId) {
+    await prisma.user
+      .upsert({
+        where: { id: authUserId },
+        create: {
+          id: authUserId,
+          email: rawEmail,
+          name: displayName,
+          ...(params.plan ? { plan: params.plan } : {}),
+        },
+        update: {
+          email: rawEmail,
+          ...(params.plan ? { plan: params.plan } : {}),
+        },
+      })
+      .catch(() => undefined);
+    return;
+  }
+
+  if (params.plan) {
+    await updatePlanByEmail(rawEmail, params.plan);
+  }
+}
+
+async function resolveEmailFromPaymentIntent(stripe: Stripe, pi: Stripe.PaymentIntent) {
+  const billingEmail = pi.receipt_email || null;
+  if (billingEmail && billingEmail.includes("@")) return billingEmail;
+  if (typeof pi.customer !== "string") return null;
+  const customer = await stripe.customers.retrieve(pi.customer);
+  return "email" in customer ? customer.email : null;
 }
 
 function readTrackingFromMetadata(metadata: Record<string, string> | null | undefined) {
@@ -130,6 +206,10 @@ export async function POST(request: Request) {
         if (userId && plan) {
           await updatePlanByUserId(userId, plan);
         }
+        await ensurePurchaseAccess({
+          email: session.customer_details?.email,
+          plan: plan ?? null,
+        });
 
         // Converte subscrição "entrada" para schedule com mudança automática para mensal.
         const subscriptionId =
@@ -226,6 +306,9 @@ export async function POST(request: Request) {
       }
       case "payment_intent.succeeded": {
         const pi = event.data.object;
+        const planFromMetadata = isPlanId(pi.metadata?.plan) ? pi.metadata.plan : null;
+        const paidEmail = await resolveEmailFromPaymentIntent(stripe, pi);
+        await ensurePurchaseAccess({ email: paidEmail, plan: planFromMetadata });
         const tracking = readTrackingFromMetadata(pi.metadata);
         await persistTrackingEvent({
           event_id: `stripe:${event.id}`,
@@ -255,6 +338,7 @@ export async function POST(request: Request) {
           metadata_json: {
             stripe_event_id: event.id,
             stripe_payment_intent_id: pi.id,
+            access_email: paidEmail,
           },
         });
         break;

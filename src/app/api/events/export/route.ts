@@ -38,11 +38,10 @@ const QUIZ_STEP_COLUMNS = [
   "checkout-upsell-1",
   "checkout-downsell-1-1",
   "checkout-downsell-1-2",
-  "checkout-downsell-1-3",
   "checkout-upsell-2",
   "checkout-downsell-2-1",
   "checkout-downsell-2-2",
-  "checkout-downsell-2-3",
+  "checkout-thank-you",
 ] as const;
 
 const RANGE_TO_DAYS: Record<string, number> = { "24h": 1, "7d": 7, "30d": 30, "90d": 90 };
@@ -56,7 +55,18 @@ type LeadFunnelRow = {
   checkout_started: boolean;
   payment_success: boolean;
   step_answers: Record<string, string> | null;
+  offer_decisions: Record<string, string> | null;
+  offer_decision_path: string | null;
 };
+
+const CHECKOUT_OFFER_STEPS = [
+  "checkout-upsell-1",
+  "checkout-downsell-1-1",
+  "checkout-downsell-1-2",
+  "checkout-upsell-2",
+  "checkout-downsell-2-1",
+  "checkout-downsell-2-2",
+] as const;
 
 function csvEscape(value: string | number | boolean | null | undefined) {
   const raw = value == null ? "" : String(value);
@@ -120,6 +130,41 @@ export async function GET(request: Request) {
       FROM latest_steps
       GROUP BY lead_key
     ),
+    latest_decisions AS (
+      SELECT DISTINCT ON (lead_key, COALESCE(metadata_json->>'checkout_stage', step_id, 'unknown'))
+        lead_key,
+        COALESCE(metadata_json->>'checkout_stage', step_id, 'unknown') AS checkout_stage,
+        COALESCE(
+          metadata_json->>'decision',
+          CASE
+            WHEN event_name LIKE '%_accepted' THEN 'accepted'
+            WHEN event_name LIKE '%_rejected' THEN 'rejected'
+            ELSE event_name
+          END
+        ) AS decision,
+        "timestamp"
+      FROM scoped
+      WHERE event_name IN ('upsell_accepted', 'upsell_rejected', 'downsell_accepted', 'downsell_rejected')
+      ORDER BY lead_key, COALESCE(metadata_json->>'checkout_stage', step_id, 'unknown'), "timestamp" DESC
+    ),
+    decision_map AS (
+      SELECT
+        lead_key,
+        jsonb_object_agg(checkout_stage, decision) AS offer_decisions
+      FROM latest_decisions
+      GROUP BY lead_key
+    ),
+    decision_path AS (
+      SELECT
+        lead_key,
+        string_agg(
+          CONCAT(checkout_stage, ':', decision),
+          ' > '
+          ORDER BY "timestamp" ASC
+        ) AS offer_decision_path
+      FROM latest_decisions
+      GROUP BY lead_key
+    ),
     lead_rollup AS (
       SELECT
         lead_key,
@@ -141,9 +186,13 @@ export async function GET(request: Request) {
       lr.result_cta_clicked,
       lr.checkout_started,
       lr.payment_success,
-      sm.step_answers
+      sm.step_answers,
+      dm.offer_decisions,
+      dp.offer_decision_path
     FROM lead_rollup lr
     LEFT JOIN step_map sm ON sm.lead_key = lr.lead_key
+    LEFT JOIN decision_map dm ON dm.lead_key = lr.lead_key
+    LEFT JOIN decision_path dp ON dp.lead_key = lr.lead_key
     ORDER BY lr.first_seen DESC
     LIMIT 5000
   `);
@@ -154,6 +203,8 @@ export async function GET(request: Request) {
     "quiz_started",
     "result_cta_clicked",
     "checkout_started",
+    "offer_decision_path",
+    ...CHECKOUT_OFFER_STEPS.map((s) => `${s}_decision`),
     "payment_success",
     ...selectedColumns,
   ];
@@ -166,6 +217,8 @@ export async function GET(request: Request) {
       row.quiz_started,
       row.result_cta_clicked,
       row.checkout_started,
+      row.offer_decision_path ?? "",
+      ...CHECKOUT_OFFER_STEPS.map((s) => (row.offer_decisions ?? {})[s] ?? ""),
       row.payment_success,
       ...selectedColumns.map((c) => steps[c] ?? ""),
     ];

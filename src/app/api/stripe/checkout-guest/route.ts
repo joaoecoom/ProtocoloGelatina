@@ -16,6 +16,8 @@ import { planUpdateSchema } from "@/lib/validators";
 export async function POST(request: Request) {
   const json = await request.json().catch(() => null);
   const tracking = (json as { tracking?: Record<string, string | undefined> } | null)?.tracking;
+  const successPathRaw = (json as { successPath?: string } | null)?.successPath;
+  const cancelPathRaw = (json as { cancelPath?: string } | null)?.cancelPath;
   const parsed = planUpdateSchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: "Plano invalido." }, { status: 400 });
@@ -29,6 +31,10 @@ export async function POST(request: Request) {
   const proto = hdrs.get("x-forwarded-proto") ?? "https";
   const originFromRequest = host ? `${proto}://${host}` : null;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? originFromRequest ?? "http://localhost:3000";
+  const successPath =
+    typeof successPathRaw === "string" && successPathRaw.startsWith("/") ? successPathRaw : "/quiz?checkout=success";
+  const cancelPath =
+    typeof cancelPathRaw === "string" && cancelPathRaw.startsWith("/") ? cancelPathRaw : "/quiz?checkout=cancel";
 
   if (shouldStripeQuizCheckoutDevMock()) {
     return NextResponse.json({
@@ -75,8 +81,8 @@ export async function POST(request: Request) {
         },
         { price: priceId, quantity: 1 },
       ],
-      success_url: `${appUrl}/quiz?checkout=success`,
-      cancel_url: `${appUrl}/quiz?checkout=cancel`,
+      success_url: `${appUrl}${successPath}`,
+      cancel_url: `${appUrl}${cancelPath}`,
       subscription_data: {
         trial_period_days: Math.max(1, planMeta.trialDays),
         metadata: {

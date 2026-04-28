@@ -202,7 +202,7 @@ function writeDailyState(next: DailyState) {
   window.localStorage.setItem(DAILY_KEY, JSON.stringify(next));
 }
 
-export function ProtocoloHub({ accessPlan }: Props) {
+export function ProtocoloHub({ accessPlan: _accessPlan }: Props) {
   const [tab, setTab] = useState<TabId>("gelatinas");
   const [daily, setDaily] = useState<DailyState>({ completedDays: 0, lastDoneYmd: null });
   const [toast, setToast] = useState<string | null>(null);

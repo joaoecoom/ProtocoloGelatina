@@ -7,20 +7,24 @@ import { planUpdateSchema } from "@/lib/validators";
 export async function POST(request: Request) {
   const json = await request.json().catch(() => null);
   const parsed = planUpdateSchema.safeParse(json);
-  const tracking = (json as { tracking?: Record<string, string | undefined> } | null)?.tracking;
-  const emailRaw = (json as { email?: string } | null)?.email ?? "";
-  const email = emailRaw.trim().toLowerCase();
-  if (!parsed.success) return NextResponse.json({ error: "Plano invalido." }, { status: 400 });
-  const hasValidEmail = email.includes("@");
-  if (!process.env.STRIPE_SECRET_KEY?.trim()) {
-    return NextResponse.json(
-      { error: "Pagamentos indisponiveis: STRIPE_SECRET_KEY em falta no servidor." },
-      { status: 503 },
-    );
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Plano invalido." }, { status: 400 });
   }
 
+  const emailRaw = (json as { email?: string } | null)?.email ?? "";
+  const email = emailRaw.trim().toLowerCase();
+  if (!email.includes("@")) {
+    return NextResponse.json({ error: "Email de compra invalido para cobrar a oferta." }, { status: 400 });
+  }
+
+  const tracking = (json as { tracking?: Record<string, string | undefined> } | null)?.tracking;
   const plan = parsed.data.plan;
   const planMeta = PLAN_CATALOG[plan];
+
+  if (!process.env.STRIPE_SECRET_KEY?.trim()) {
+    return NextResponse.json({ error: "Pagamentos indisponiveis: STRIPE_SECRET_KEY em falta." }, { status: 503 });
+  }
+
   const hdrs = await headers();
   const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host");
   const proto = hdrs.get("x-forwarded-proto") ?? "https";
@@ -31,36 +35,47 @@ export async function POST(request: Request) {
 
   try {
     const stripe = getStripe();
+    const existing = await stripe.customers.list({ email, limit: 1 });
+    const customer = existing.data[0];
+    if (!customer) {
+      return NextResponse.json({ error: "Nao encontramos cliente Stripe para este email." }, { status: 404 });
+    }
+
     const monthlyPriceId = await resolveStripeMonthlyPriceIdWithStripe(stripe, plan);
     if (!monthlyPriceId) {
       return NextResponse.json({ error: `Nao ha preco mensal para ${plan}.` }, { status: 400 });
     }
+
     const monthlyPrice = await stripe.prices.retrieve(monthlyPriceId);
     const baseProductId =
       typeof monthlyPrice.product === "string" ? monthlyPrice.product : monthlyPrice.product?.id;
     if (!baseProductId) {
-      return NextResponse.json({ error: "Nao foi possivel resolver produto base do plano." }, { status: 400 });
+      return NextResponse.json({ error: "Nao foi possivel resolver o produto base desta oferta." }, { status: 400 });
     }
 
-    const existing = hasValidEmail ? await stripe.customers.list({ email, limit: 1 }) : null;
-    const customerId =
-      existing?.data[0]?.id ??
-      (
-        await stripe.customers.create({
-          ...(hasValidEmail ? { email } : {}),
-          metadata: {
-            plan,
-            source: "quiz_elements",
-            session_id: tracking?.session_id ?? "",
-            visitor_id: tracking?.visitor_id ?? "",
-            anonymous_id: tracking?.anonymous_id ?? "",
-          },
-        })
-      ).id;
+    const customerDefaultPaymentMethod =
+      typeof customer.invoice_settings?.default_payment_method === "string"
+        ? customer.invoice_settings.default_payment_method
+        : customer.invoice_settings?.default_payment_method?.id;
+
+    const fallbackSubscription = await stripe.subscriptions.list({
+      customer: customer.id,
+      status: "all",
+      limit: 10,
+    });
+    const subWithPm = fallbackSubscription.data.find((s) => typeof s.default_payment_method === "string");
+    const defaultPaymentMethod = customerDefaultPaymentMethod ?? (subWithPm?.default_payment_method as string | null);
+    if (!defaultPaymentMethod) {
+      return NextResponse.json(
+        { error: "Nao existe metodo de pagamento guardado para cobranca automatica." },
+        { status: 400 },
+      );
+    }
 
     const subscription = await stripe.subscriptions.create({
-      customer: customerId,
+      customer: customer.id,
       items: [{ price: monthlyPriceId, quantity: 1 }],
+      default_payment_method: defaultPaymentMethod,
       trial_period_days: Math.max(1, planMeta.trialDays),
       add_invoice_items: [
         {
@@ -73,13 +88,13 @@ export async function POST(request: Request) {
           quantity: 1,
         },
       ],
-      payment_behavior: "default_incomplete",
+      payment_behavior: "error_if_incomplete",
       payment_settings: {
         save_default_payment_method: "on_subscription",
       },
       metadata: {
         plan,
-        source: "quiz_guest_elements",
+        source: "quiz_offer_one_click",
         monthlyPriceId,
         trialDays: String(planMeta.trialDays),
         appUrl,
@@ -87,41 +102,18 @@ export async function POST(request: Request) {
         visitor_id: tracking?.visitor_id ?? "",
         anonymous_id: tracking?.anonymous_id ?? "",
         funnel_id: tracking?.funnel_id ?? "quiz_gelatina",
-        step_id: tracking?.step_id ?? "final-sales",
+        step_id: tracking?.step_id ?? "",
       },
-      expand: ["latest_invoice", "latest_invoice.payment_intent", "latest_invoice.confirmation_secret"],
+      expand: ["latest_invoice.payment_intent"],
     });
-
-    const latestInvoice = subscription.latest_invoice as unknown;
-    let clientSecret: string | null = null;
-    if (latestInvoice && typeof latestInvoice === "object") {
-      const invoiceAny = latestInvoice as {
-        payment_intent?: string | { client_secret?: string | null } | null;
-        confirmation_secret?: { client_secret?: string | null } | null;
-      };
-      const pi = invoiceAny.payment_intent;
-      if (pi && typeof pi !== "string") {
-        clientSecret = pi.client_secret ?? null;
-      }
-      if (pi && typeof pi === "string") {
-        const paymentIntent = await stripe.paymentIntents.retrieve(pi);
-        clientSecret = paymentIntent.client_secret ?? null;
-      }
-      if (!clientSecret) {
-        clientSecret = invoiceAny.confirmation_secret?.client_secret ?? null;
-      }
-    }
-    if (!clientSecret) {
-      return NextResponse.json({ error: "Nao foi possivel obter client secret." }, { status: 500 });
-    }
 
     return NextResponse.json({
-      clientSecret,
+      ok: true,
       subscriptionId: subscription.id,
-      customerId,
+      customerId: customer.id,
     });
   } catch (err) {
-    console.error("[elements-guest-subscription] create", err);
+    console.error("[offer-charge] create", err);
     const { status, error } = resolveCheckoutHandlerError(err);
     return NextResponse.json({ error }, { status });
   }

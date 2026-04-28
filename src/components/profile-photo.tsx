@@ -319,7 +319,6 @@ export function ProfilePhoto({ displayName, avatarUrl: initialUrl }: Props) {
 
   // Sincronizar avatar vindo do servidor (router.refresh) com o estado local.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync explícito quando a prop muda
     setUrl(initialUrl);
   }, [initialUrl]);
 

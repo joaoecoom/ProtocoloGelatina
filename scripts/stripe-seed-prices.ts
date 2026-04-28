@@ -49,39 +49,59 @@ async function main() {
   for (const plan of plans) {
     const meta = PLAN_CATALOG[plan];
     const lookupKey = stripeCatalogMonthlyLookupKey(plan);
+    const expectedAmount = Math.round(meta.monthlyEuro * 100);
 
     const listed = await stripe.prices.list({
       lookup_keys: [lookupKey],
-      active: true,
-      limit: 1,
+      limit: 10,
     });
 
-    let priceId: string | undefined = listed.data[0]?.id;
+    const activeMonthlyMatch = listed.data.find(
+      (p) =>
+        p.active &&
+        p.type === "recurring" &&
+        p.recurring?.interval === "month" &&
+        p.currency === "eur" &&
+        p.unit_amount === expectedAmount,
+    );
+
+    let priceId: string | undefined = activeMonthlyMatch?.id;
 
     if (priceId) {
-      console.log(`OK ${plan}: reutiliza ${priceId} (${lookupKey})`);
+      console.log(`OK ${plan}: reutiliza ${priceId} (${lookupKey}) EUR ${meta.monthlyEuro}/mes`);
     } else if (dryRun) {
       console.log(
-        `[dry-run] Criaria product + price EUR ${meta.monthlyEuro}/mes, lookup_key=${lookupKey} (${meta.label})`,
+        `[dry-run] Criaria/atualizaria price EUR ${meta.monthlyEuro}/mes, lookup_key=${lookupKey} (${meta.label})`,
       );
       continue;
     } else {
-      const product = await stripe.products.create({
-        name: meta.label,
-        description: meta.description.slice(0, 500),
-        metadata: { gelatina_plan_id: plan, source: "stripe-seed-prices" },
-      });
+      const existingProductId =
+        listed.data
+          .map((p) => (typeof p.product === "string" ? p.product : p.product?.id))
+          .find(Boolean) ?? null;
+
+      const productId =
+        existingProductId ??
+        (
+          await stripe.products.create({
+            name: meta.label,
+            description: meta.description.slice(0, 500),
+            metadata: { gelatina_plan_id: plan, source: "stripe-seed-prices" },
+          })
+        ).id;
+
       const price = await stripe.prices.create({
-        product: product.id,
+        product: productId,
         currency: "eur",
-        unit_amount: Math.round(meta.monthlyEuro * 100),
+        unit_amount: expectedAmount,
         recurring: { interval: "month" },
         lookup_key: lookupKey,
+        transfer_lookup_key: true,
         tax_behavior: "exclusive",
         metadata: { gelatina_plan_id: plan },
       });
       priceId = price.id;
-      console.log(`OK ${plan}: criado ${priceId} (${lookupKey})`);
+      console.log(`OK ${plan}: atualizado para ${priceId} (${lookupKey}) EUR ${meta.monthlyEuro}/mes`);
     }
 
     if (priceId) lines.push(`STRIPE_PRICE_${plan}="${priceId}"`);

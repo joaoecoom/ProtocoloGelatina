@@ -43,7 +43,7 @@ function UserIcon() {
 }
 
 export function AppHeaderLinks({
-  isSuperAdmin,
+  isSuperAdmin: _isSuperAdmin,
   avatarUrl,
 }: {
   isSuperAdmin: boolean;

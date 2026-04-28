@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-globals */
 self.addEventListener("push", (event) => {
   let data = { title: "Protocolo Gelatina", body: "", tag: "pg-default", url: "/" };
   try {

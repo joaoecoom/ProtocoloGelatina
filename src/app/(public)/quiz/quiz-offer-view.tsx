@@ -328,6 +328,7 @@ export default function QuizOfferView() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [showFinalSalesStep, setShowFinalSalesStep] = useState(false);
   const [postPreSalesStep, setPostPreSalesStep] = useState(0);
+  const [isPreSalesMuted, setIsPreSalesMuted] = useState(false);
   const [apoioSelection, setApoioSelection] = useState<string | null>(null);
   const [corpoSonhosSelection, setCorpoSonhosSelection] = useState<string | null>(null);
   const [analyzingProgress, setAnalyzingProgress] = useState(1);
@@ -522,12 +523,37 @@ export default function QuizOfferView() {
     if (!isDone || showFinalSalesStep || postPreSalesStep !== 0) return;
     const video = preSalesVideoRef.current;
     if (!video) return;
-    video.muted = false;
     video.currentTime = 0;
-    void video.play().catch(() => {
-      // Safari/iOS por vezes bloqueia autoplay com som; o utilizador já interagiu no quiz.
-    });
+
+    const tryAutoplay = async () => {
+      try {
+        // Primeiro tenta com som.
+        video.muted = false;
+        video.volume = 1;
+        await video.play();
+        setIsPreSalesMuted(false);
+      } catch {
+        // Em produção, vários browsers bloqueiam autoplay com som.
+        // Fallback: garantir autoplay em mute para não travar a etapa.
+        video.muted = true;
+        video.volume = 1;
+        await video.play().catch(() => undefined);
+        setIsPreSalesMuted(true);
+      }
+    };
+
+    void tryAutoplay();
   }, [isDone, showFinalSalesStep, postPreSalesStep]);
+
+  async function enablePreSalesSound() {
+    const video = preSalesVideoRef.current;
+    if (!video) return;
+    video.currentTime = 0;
+    video.muted = false;
+    video.volume = 1;
+    await video.play().catch(() => undefined);
+    setIsPreSalesMuted(false);
+  }
 
   useEffect(() => {
     if (!isAnalyzing) return;
@@ -1786,17 +1812,27 @@ export default function QuizOfferView() {
                   : "Veja e ouça minha mensagem urgente!"}
               </p>
               <div className="mx-auto mt-3 w-full max-w-[300px] overflow-hidden rounded-2xl border border-neutral-200 bg-black shadow-sm sm:max-w-[320px]">
-                <div className="aspect-[9/16] w-full">
+                <div className="relative aspect-[9/16] w-full">
                   <video
                     ref={preSalesVideoRef}
                     className="h-full w-full object-cover object-center"
                     autoPlay
+                    muted
                     playsInline
                     preload="auto"
                     onContextMenu={(event) => event.preventDefault()}
                   >
                     <source src={PRE_SALES_VIDEO_SRC} type="video/mp4" />
                   </video>
+                  {isPreSalesMuted ? (
+                    <button
+                      type="button"
+                      onClick={enablePreSalesSound}
+                      className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white/95 px-4 py-2 text-sm font-black text-neutral-900 shadow"
+                    >
+                      Ativar som
+                    </button>
+                  ) : null}
                 </div>
               </div>
               <p className="mt-4 text-[18px] font-black leading-tight text-pg-ink sm:text-[22px]">
