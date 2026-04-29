@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash } from "crypto";
 import type { IngestEvent } from "@/lib/tracking/schemas";
 
 const META_GRAPH_VERSION = "v21.0";
