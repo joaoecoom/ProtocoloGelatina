@@ -30,3 +30,16 @@ O assistente só consegue **ler ficheiros que estão no workspace**; não acede 
 ## Vercel / produção
 
 Cola as **mesmas** variáveis no painel Environment Variables da Vercel. Esta pasta **não** substitui isso — só organiza o teu disco local.
+
+### Tracking (Meta + UTMify)
+
+No `secrets.env` / Vercel, as variáveis usadas pelo código são:
+
+- `NEXT_PUBLIC_META_PIXEL_ID`
+- `META_CAPI_ACCESS_TOKEN` (só servidor; nunca `NEXT_PUBLIC_`)
+- `META_CAPI_TEST_EVENT_CODE` (opcional; usar para **Test events** no Events Manager; remover ou esvaziar quando fores a sério com anúncios)
+- `NEXT_PUBLIC_UTMIFY_PIXEL_ID`
+
+**Preview (deploys de PR):** na Vercel CLI não dá para “todas as branches” sem nome de branch. No dashboard: **Project → Settings → Environment Variables** → para cada variável acima, marca também **Preview** (ou “All preview branches”, conforme a UI).
+
+Depois de alterar env na Vercel, faz **Redeploy** do último deployment para aplicar.

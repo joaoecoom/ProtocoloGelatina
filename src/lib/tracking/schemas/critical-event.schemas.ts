@@ -43,12 +43,15 @@ export const PaymentSuccessEventSchema = BaseEventSchema.safeExtend({
   order_id: z.string().min(1),
   revenue: z.number().finite(),
   currency: CurrencySchema,
-  metadata_json: z.object({
-    stripe_event_id: z.string().min(1),
-    stripe_payment_intent_id: z.string().min(1).optional(),
-    stripe_checkout_session_id: z.string().min(1).optional(),
-    product_id: z.string().optional(),
-  }),
+  metadata_json: z
+    .object({
+      stripe_event_id: z.string().min(1),
+      stripe_payment_intent_id: z.string().min(1).optional(),
+      stripe_checkout_session_id: z.string().min(1).optional(),
+      product_id: z.string().optional(),
+      access_email: z.string().optional(),
+    })
+    .passthrough(),
 });
 
 export const RefundEventSchema = BaseEventSchema.safeExtend({

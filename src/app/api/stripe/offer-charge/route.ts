@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { PLAN_CATALOG } from "@/lib/plans";
+import { getCurrentUser } from "@/lib/session";
 import { getStripe, resolveCheckoutHandlerError, resolveStripeMonthlyPriceIdWithStripe } from "@/lib/stripe";
 import { planUpdateSchema } from "@/lib/validators";
 
@@ -11,14 +12,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Plano invalido." }, { status: 400 });
   }
 
-  const emailRaw = (json as { email?: string } | null)?.email ?? "";
-  const email = emailRaw.trim().toLowerCase();
+  const tracking = (json as { tracking?: Record<string, string | undefined> } | null)?.tracking;
+  const plan = parsed.data.plan;
+  if (plan === "FRONT") {
+    return NextResponse.json({ error: "Este endpoint e apenas para ofertas adicionais." }, { status: 400 });
+  }
+
+  const requestEmail = ((json as { email?: string } | null)?.email ?? "").trim().toLowerCase();
+  const currentUser = await getCurrentUser();
+  const email = (currentUser?.email ?? requestEmail).trim().toLowerCase();
   if (!email.includes("@")) {
     return NextResponse.json({ error: "Email de compra invalido para cobrar a oferta." }, { status: 400 });
   }
+  if (currentUser?.email && requestEmail && currentUser.email.toLowerCase() !== requestEmail) {
+    return NextResponse.json({ error: "Email da compra nao coincide com a sessao autenticada." }, { status: 403 });
+  }
 
-  const tracking = (json as { tracking?: Record<string, string | undefined> } | null)?.tracking;
-  const plan = parsed.data.plan;
   const planMeta = PLAN_CATALOG[plan];
 
   if (!process.env.STRIPE_SECRET_KEY?.trim()) {

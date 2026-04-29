@@ -1,5 +1,6 @@
 import type { IngestEvent } from "@/lib/tracking/schemas";
 import { buildIntegrationHeaders, getTrackingIntegrationConfig } from "./config";
+import { sendMetaConversionsApiEvent } from "./meta-capi";
 
 type Platform = "meta" | "tiktok" | "google" | "utmify";
 
@@ -78,6 +79,13 @@ export async function dispatchEventToIntegrations(event: IngestEvent) {
   const cfg = getTrackingIntegrationConfig();
 
   const jobs: Promise<void>[] = [];
+
+  // Meta Conversions API (servidor) — em paralelo ao Pixel browser e ao webhook opcional.
+  jobs.push(
+    sendMetaConversionsApiEvent(event).catch((err) => {
+      console.warn("[tracking][meta-capi]", err);
+    }),
+  );
 
   // UTMify receives every event.
   if (cfg.utmifyUrl) {

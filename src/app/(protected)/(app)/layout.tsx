@@ -44,9 +44,6 @@ export default async function AppShellLayout({
         <AppHeaderLinks isSuperAdmin={user.isSuperAdmin} avatarUrl={user.avatarUrl} />
       </header>
       <nav className="mb-4 flex gap-2 overflow-x-auto pb-1 text-xs font-semibold text-pg-berry/90">
-        <Link href="/cursos" className="rounded-full border border-pg-forest/10 bg-white/70 px-3 py-1.5 whitespace-nowrap">
-          Cursos
-        </Link>
         <Link href="/ebooks" className="rounded-full border border-pg-forest/10 bg-white/70 px-3 py-1.5 whitespace-nowrap">
           Ebooks
         </Link>

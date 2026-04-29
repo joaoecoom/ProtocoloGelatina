@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
@@ -135,6 +135,8 @@ export default function QuizEmbeddedCheckoutPage() {
   const [purchaseEmail, setPurchaseEmail] = useState("");
   const [upsellFakeSeconds, setUpsellFakeSeconds] = useState(9 * 60 + 57);
   const [isChargingOffer, setIsChargingOffer] = useState(false);
+  const decisionLockRef = useRef(false);
+  const clientSecretOfferRef = useRef<"1w" | "4w" | "12w">("1w");
 
   const elementsOptions = useMemo<StripeElementsOptions | undefined>(
     () =>
@@ -160,6 +162,7 @@ export default function QuizEmbeddedCheckoutPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           plan: "FRONT",
+          offer: selectedOffer,
           tracking: {
             session_id: tracking.sessionId,
             visitor_id: tracking.visitorId,
@@ -183,17 +186,19 @@ export default function QuizEmbeddedCheckoutPage() {
         return;
       }
       setClientSecret(data.clientSecret);
+      clientSecretOfferRef.current = selectedOffer;
     } catch {
       setCheckoutError("Falha ao preparar pagamento.");
     } finally {
       setIsPreparing(false);
     }
-  }, [isPreparing]);
+  }, [isPreparing, selectedOffer]);
 
   useEffect(() => {
     const cached = sessionStorage.getItem("quiz_checkout_client_secret");
     if (cached) {
       setClientSecret(cached);
+      clientSecretOfferRef.current = "1w";
       sessionStorage.removeItem("quiz_checkout_client_secret");
     }
     const paid = sessionStorage.getItem("quiz_front_paid") === "1";
@@ -203,10 +208,11 @@ export default function QuizEmbeddedCheckoutPage() {
   }, []);
 
   useEffect(() => {
-    if (!clientSecret && !isPreparing) {
+    if (stepIndex !== 0 || isPreparing) return;
+    if (!clientSecret || clientSecretOfferRef.current !== selectedOffer) {
       void prepareCheckout();
     }
-  }, [clientSecret, isPreparing, prepareCheckout]);
+  }, [clientSecret, isPreparing, prepareCheckout, selectedOffer, stepIndex]);
 
   useEffect(() => {
     const fakeTimer = window.setInterval(() => {
@@ -300,46 +306,51 @@ export default function QuizEmbeddedCheckoutPage() {
   }
 
   async function handleDecision(accepted: boolean) {
-    if (isChargingOffer) return;
-    const nextStepId = accepted ? currentTransition.accept : currentTransition.reject;
-    if (!isFrontStep) {
-      const decisionEvent = accepted
-        ? currentStep.id.includes("downsell")
-          ? "downsell_accepted"
-          : "upsell_accepted"
-        : currentStep.id.includes("downsell")
-          ? "downsell_rejected"
-          : "upsell_rejected";
+    if (decisionLockRef.current || isChargingOffer) return;
+    decisionLockRef.current = true;
+    try {
+      const nextStepId = accepted ? currentTransition.accept : currentTransition.reject;
+      if (!isFrontStep) {
+        const decisionEvent = accepted
+          ? currentStep.id.includes("downsell")
+            ? "downsell_accepted"
+            : "upsell_accepted"
+          : currentStep.id.includes("downsell")
+            ? "downsell_rejected"
+            : "upsell_rejected";
 
-      void track({
-        event_name: decisionEvent,
-        funnel_id: "quiz_gelatina",
-        step_id: currentStep.dashboardStepId,
-        page_type: "checkout",
-        metadata_json: {
-          checkout_stage: currentStep.id,
-          checkout_step: stepIndex + 1,
-          decision: accepted ? "accepted" : "rejected",
-        },
-      });
-    }
-
-    if (!isFrontStep && accepted) {
-      try {
-        setIsChargingOffer(true);
-        const charged = await chargeOfferOneClick(currentStep.id, currentStep.dashboardStepId);
-        if (!charged) return;
-        setCheckoutError(null);
-      } finally {
-        setIsChargingOffer(false);
+        void track({
+          event_name: decisionEvent,
+          funnel_id: "quiz_gelatina",
+          step_id: currentStep.dashboardStepId,
+          page_type: "checkout",
+          metadata_json: {
+            checkout_stage: currentStep.id,
+            checkout_step: stepIndex + 1,
+            decision: accepted ? "accepted" : "rejected",
+          },
+        });
       }
-    }
 
-    if (!nextStepId) {
-      goToThankYou(accepted ? "accepted" : "rejected");
-      return;
+      if (!isFrontStep && accepted) {
+        try {
+          setIsChargingOffer(true);
+          const charged = await chargeOfferOneClick(currentStep.id, currentStep.dashboardStepId);
+          if (!charged) return;
+          setCheckoutError(null);
+        } finally {
+          setIsChargingOffer(false);
+        }
+      }
+
+      if (!nextStepId) {
+        goToThankYou(accepted ? "accepted" : "rejected");
+        return;
+      }
+      setStepIndex(resolveStepIndexById(nextStepId));
+    } finally {
+      decisionLockRef.current = false;
     }
-    setStepIndex(resolveStepIndexById(nextStepId));
   }
 
   const legalCopyByOffer: Record<"1w" | "4w" | "12w", string> = {

@@ -4,6 +4,14 @@ import { PLAN_CATALOG } from "@/lib/plans";
 import { getStripe, resolveCheckoutHandlerError, resolveStripeMonthlyPriceIdWithStripe } from "@/lib/stripe";
 import { planUpdateSchema } from "@/lib/validators";
 
+type FrontOfferId = "1w" | "4w" | "12w";
+
+const FRONT_OFFER_PRICING: Record<FrontOfferId, { trialEuro: number }> = {
+  "1w": { trialEuro: 6.99 },
+  "4w": { trialEuro: 12.99 },
+  "12w": { trialEuro: 22.49 },
+};
+
 export async function POST(request: Request) {
   const json = await request.json().catch(() => null);
   const parsed = planUpdateSchema.safeParse(json);
@@ -20,6 +28,8 @@ export async function POST(request: Request) {
   }
 
   const plan = parsed.data.plan;
+  const offer = ((json as { offer?: string } | null)?.offer ?? "1w") as FrontOfferId;
+  const frontOfferPricing = FRONT_OFFER_PRICING[offer] ?? FRONT_OFFER_PRICING["1w"];
   const planMeta = PLAN_CATALOG[plan];
   const hdrs = await headers();
   const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host");
@@ -67,7 +77,7 @@ export async function POST(request: Request) {
           price_data: {
             currency: "eur",
             product: baseProductId,
-            unit_amount: Math.round(planMeta.trialEuro * 100),
+            unit_amount: Math.round((plan === "FRONT" ? frontOfferPricing.trialEuro : planMeta.trialEuro) * 100),
             tax_behavior: "exclusive",
           },
           quantity: 1,
@@ -82,6 +92,7 @@ export async function POST(request: Request) {
         source: "quiz_guest_elements",
         monthlyPriceId,
         trialDays: String(planMeta.trialDays),
+        front_offer: plan === "FRONT" ? offer : "",
         appUrl,
         session_id: tracking?.session_id ?? "",
         visitor_id: tracking?.visitor_id ?? "",

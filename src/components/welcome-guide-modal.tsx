@@ -28,9 +28,9 @@ const steps = [
   },
   {
     title: "4. Explora o resto da app",
-    body: "No topo tens Cursos, Ebooks e Loja. Na barra de baixo, Planos mostra a matriz de níveis quando quiseres evoluir.",
-    href: "/cursos",
-    cta: "Ver Cursos",
+    body: "No topo tens Ebooks e Loja. Na barra de baixo, Planos mostra a matriz de níveis quando quiseres evoluir.",
+    href: "/planos",
+    cta: "Ver Planos",
   },
 ] as const;
 

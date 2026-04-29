@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, Plus_Jakarta_Sans } from "next/font/google";
 import { DevToolsProvider } from "@/components/dev-tools-provider";
+import { MetaUtmifyScripts } from "@/components/tracking/meta-utmify-scripts";
 import "./globals.css";
 
 const fontSans = Plus_Jakarta_Sans({
@@ -57,6 +58,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <DevToolsProvider />
+        <MetaUtmifyScripts />
         {children}
       </body>
     </html>

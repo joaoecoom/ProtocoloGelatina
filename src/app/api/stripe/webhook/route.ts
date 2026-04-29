@@ -10,6 +10,60 @@ import { IngestEventSchema } from "@/lib/tracking/schemas";
 
 export const runtime = "nodejs";
 
+function resolveAppBaseUrl() {
+  const raw =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+    process.env.VERCEL_URL ||
+    "http://localhost:3000";
+  const withProto = raw.startsWith("http://") || raw.startsWith("https://") ? raw : `https://${raw}`;
+  try {
+    return new URL(withProto).origin;
+  } catch {
+    return "http://localhost:3000";
+  }
+}
+
+async function sendPostPurchaseAccessEmail(params: { email: string; defaultPassword: string; appBaseUrl: string }) {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.PURCHASE_ACCESS_FROM_EMAIL?.trim();
+  if (!apiKey || !from) return false;
+
+  const loginUrl = `${params.appBaseUrl}/entrar/checkout?email=${encodeURIComponent(params.email)}`;
+  const resetUrl = `${params.appBaseUrl}/esqueci-password`;
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111">
+      <h2>Acesso ao Protocolo Gelatina Inteligente</h2>
+      <p>A tua compra foi confirmada. Aqui estão os teus dados de acesso:</p>
+      <ul>
+        <li><strong>Link da app:</strong> <a href="${loginUrl}">${loginUrl}</a></li>
+        <li><strong>Email de compra:</strong> ${params.email}</li>
+        <li><strong>Password inicial:</strong> ${params.defaultPassword}</li>
+      </ul>
+      <p>Se quiseres alterar a password, usa este link:</p>
+      <p><a href="${resetUrl}">${resetUrl}</a></p>
+      <p>Qualquer dúvida, responde a este email.</p>
+    </div>
+  `;
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      from,
+      to: [params.email],
+      subject: "Acesso confirmado: Protocolo Gelatina Inteligente",
+      html,
+    }),
+  });
+
+  return response.ok;
+}
+
 async function readPlanFromSubscription(
   stripe: Stripe,
   subscription: { items?: { data?: Array<{ price?: { id?: string | null } | null }> } },
@@ -36,15 +90,30 @@ async function updatePlanByEmail(email: string, plan: PlanId) {
 }
 
 function isPlanId(value: string | undefined | null): value is PlanId {
-  return value === "FRONT" || value === "DS3_UP2";
+  return (
+    value === "FRONT" ||
+    value === "UPSELL_1" ||
+    value === "DS1_UP1" ||
+    value === "DS2_UP1" ||
+    value === "DS3_UP1" ||
+    value === "UPSELL_2" ||
+    value === "DS1_UP2" ||
+    value === "DS2_UP2" ||
+    value === "DS3_UP2"
+  );
 }
 
-async function ensurePurchaseAccess(params: { email: string | null | undefined; plan?: PlanId | null }) {
+async function ensurePurchaseAccess(params: {
+  email: string | null | undefined;
+  plan?: PlanId | null;
+  sendAccessEmail?: boolean;
+}) {
   const rawEmail = params.email?.trim().toLowerCase();
   if (!rawEmail || !rawEmail.includes("@")) return;
 
   const defaultPassword = process.env.PURCHASE_DEFAULT_PASSWORD?.trim() || "123456";
   const displayName = rawEmail.split("@")[0] || "Cliente";
+  const appBaseUrl = resolveAppBaseUrl();
 
   let authUserId: string | null = null;
 
@@ -92,6 +161,17 @@ async function ensurePurchaseAccess(params: { email: string | null | undefined; 
         },
       })
       .catch(() => undefined);
+
+    if (params.sendAccessEmail) {
+      const emailSent = await sendPostPurchaseAccessEmail({
+        email: rawEmail,
+        defaultPassword,
+        appBaseUrl,
+      }).catch(() => false);
+      if (!emailSent) {
+        console.warn("[stripe/webhook] purchase access email not sent (missing provider config?)");
+      }
+    }
     return;
   }
 
@@ -209,6 +289,7 @@ export async function POST(request: Request) {
         await ensurePurchaseAccess({
           email: session.customer_details?.email,
           plan: plan ?? null,
+          sendAccessEmail: true,
         });
 
         // Converte subscrição "entrada" para schedule com mudança automática para mensal.
