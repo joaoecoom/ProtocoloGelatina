@@ -169,15 +169,19 @@ export function DashboardClient({
   const patchTracking = useCallback(
     async (partial: Partial<NonNullable<Tracking>>) => {
       if (databaseOffline) return;
-      const res = await fetch("/api/tracking", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(partial),
-      });
-      if (!res.ok) return null;
-      const data = (await res.json()) as { tracking: NonNullable<Tracking> };
-      setTracking(data.tracking);
-      return data.tracking;
+      try {
+        const res = await fetch("/api/tracking", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(partial),
+        });
+        if (!res.ok) return null;
+        const data = (await res.json()) as { tracking: NonNullable<Tracking> };
+        setTracking(data.tracking);
+        return data.tracking;
+      } catch {
+        return null;
+      }
     },
     [databaseOffline],
   );
@@ -382,6 +386,8 @@ export function DashboardClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(next),
+      }).catch(() => {
+        /* rede — horários já estão no estado local */
       });
     }, 800);
   }

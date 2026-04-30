@@ -1162,37 +1162,36 @@ export default function QuizOfferView() {
 
         {isIntro ? (
           <section className="mx-auto max-w-[860px]">
-            <div className="flex flex-col sm:block">
-              <p className="order-1 text-balance text-center text-[22px] font-extrabold leading-tight text-pg-ink sm:order-none sm:mb-6 sm:text-left sm:text-[28px]">
+            <div className="mx-auto max-w-[640px] space-y-3 text-center text-balance">
+              <p className="text-[22px] font-extrabold leading-tight text-pg-ink sm:text-[26px] md:text-[28px]">
                 <span className="text-red-600">Atencao:</span> oferecemos apenas{" "}
                 <span className="text-pg-ink">uma consulta por pessoa.</span>
               </p>
-
-              <div className="order-2 mt-4 rounded-3xl border border-pg-forest/10 bg-white p-3 sm:order-none sm:p-6 md:p-8">
-                <div className="mx-auto w-full max-w-[560px] rounded-2xl border border-pg-forest/10 bg-gradient-to-b from-rose-50 via-white to-emerald-50 px-3 py-4 sm:px-6 sm:py-10">
-                  <Image
-                    src="/quiz-main-v3.png"
-                    alt="Gelatina Inteligente"
-                    width={1200}
-                    height={1200}
-                    priority
-                    className="mx-auto h-auto max-h-[min(220px,32vh)] w-full max-w-[520px] rounded-xl object-contain sm:max-h-none"
-                  />
-                </div>
-              </div>
-
-              <p className="order-3 mt-4 text-center text-[17px] leading-snug text-pg-ink sm:order-none sm:mt-8 sm:text-[28px] sm:leading-relaxed md:text-[32px]">
+              <p className="text-[17px] leading-snug text-pg-ink sm:text-[22px] sm:leading-relaxed md:text-[24px]">
                 Se voce sair, perdera a sua vez. Aproveite essa oportunidade exclusiva!
               </p>
-
-              <button
-                type="button"
-                onClick={next}
-                className={`order-4 mt-5 h-14 w-full text-lg sm:order-none sm:mt-9 sm:h-16 sm:text-xl ${CONTINUE_BUTTON_CLASS}`}
-              >
-                Começar diagnóstico
-              </button>
             </div>
+
+            <div className="mt-4 rounded-3xl border border-pg-forest/10 bg-white p-3 sm:mt-6 sm:p-6 md:p-8">
+              <div className="mx-auto w-full max-w-[560px] rounded-2xl border border-pg-forest/10 bg-gradient-to-b from-rose-50 via-white to-emerald-50 px-3 py-4 sm:px-6 sm:py-10">
+                <Image
+                  src="/quiz-main-v3.png"
+                  alt="Gelatina Inteligente"
+                  width={1200}
+                  height={1200}
+                  priority
+                  className="mx-auto h-auto max-h-[min(220px,32vh)] w-full max-w-[520px] rounded-xl object-contain sm:max-h-none"
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={next}
+              className={`mt-5 h-14 w-full text-lg sm:mt-9 sm:h-16 sm:text-xl ${CONTINUE_BUTTON_CLASS}`}
+            >
+              Começar diagnóstico
+            </button>
           </section>
         ) : !isDone && isQuestionStep && current ? (
           <section className="mx-auto max-w-[820px]">

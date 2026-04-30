@@ -51,41 +51,47 @@ export function getTrackingContext() {
 }
 
 export async function track(input: TrackInput) {
-  const { keepalive, schema_name, schema_version, ...payload } = input;
-  const context = getTrackingContext();
-  const event = {
-    ...payload,
-    event_id: createEventId(),
-    event_version: 1,
-    timestamp: new Date().toISOString(),
-    schema_name: schema_name ?? payload.event_name,
-    schema_version: schema_version ?? 1,
-    session_id: context.sessionId,
-    visitor_id: context.visitorId,
-    anonymous_id: context.anonymousId,
-    utm_source: context.utm_source,
-    utm_medium: context.utm_medium,
-    utm_campaign: context.utm_campaign,
-    utm_content: context.utm_content,
-    utm_term: context.utm_term,
-    fbclid: context.fbclid,
-    gclid: context.gclid,
-    ttclid: context.ttclid,
-    referrer: context.referrer,
-    metadata_json: {
-      ...(payload.metadata_json ?? {}),
-      attribution: context.attribution,
-    },
-  };
+  try {
+    const { keepalive, schema_name, schema_version, ...payload } = input;
+    const context = getTrackingContext();
+    const event = {
+      ...payload,
+      event_id: createEventId(),
+      event_version: 1,
+      timestamp: new Date().toISOString(),
+      schema_name: schema_name ?? payload.event_name,
+      schema_version: schema_version ?? 1,
+      session_id: context.sessionId,
+      visitor_id: context.visitorId,
+      anonymous_id: context.anonymousId,
+      utm_source: context.utm_source,
+      utm_medium: context.utm_medium,
+      utm_campaign: context.utm_campaign,
+      utm_content: context.utm_content,
+      utm_term: context.utm_term,
+      fbclid: context.fbclid,
+      gclid: context.gclid,
+      ttclid: context.ttclid,
+      referrer: context.referrer,
+      metadata_json: {
+        ...(payload.metadata_json ?? {}),
+        attribution: context.attribution,
+      },
+    };
 
-  const parsed = IngestEventSchema.safeParse(event);
-  if (!parsed.success) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("[tracking] invalid event payload", parsed.error.flatten());
+    const parsed = IngestEventSchema.safeParse(event);
+    if (!parsed.success) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[tracking] invalid event payload", parsed.error.flatten());
+      }
+      return;
     }
-    return;
+    await postEvent(parsed.data, { keepalive });
+  } catch (e) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[tracking] track() failed (não rejeita — evita overlay com void track)", e);
+    }
   }
-  await postEvent(parsed.data, { keepalive });
 }
 
 export function trackWithBeacon(input: Omit<TrackInput, "keepalive">) {

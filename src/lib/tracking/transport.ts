@@ -3,12 +3,18 @@
 import type { IngestEvent } from "./schemas";
 
 export async function postEvent(event: IngestEvent, options?: { keepalive?: boolean }) {
-  await fetch("/api/events/ingest", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(event),
-    keepalive: options?.keepalive ?? false,
-  });
+  try {
+    await fetch("/api/events/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(event),
+      keepalive: options?.keepalive ?? false,
+    });
+  } catch (e) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[tracking] /api/events/ingest failed (rede ou servidor parado?)", e);
+    }
+  }
 }
 
 export function sendEventWithBeacon(event: IngestEvent) {

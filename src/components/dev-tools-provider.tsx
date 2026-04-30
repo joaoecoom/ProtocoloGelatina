@@ -74,6 +74,38 @@ function DevApiLogPanel() {
   );
 }
 
+/** Safari / Chrome usam mensagens ligeiramente diferentes. */
+function isBenignNetworkFailure(reason: unknown): boolean {
+  if (!(reason instanceof Error)) return false;
+  const m = reason.message;
+  return (
+    m === "Failed to fetch" ||
+    m === "NetworkError when attempting to fetch resource." ||
+    m === "Load failed"
+  );
+}
+
+/**
+ * O overlay de runtime do Next captura `unhandledrejection` com "Failed to fetch"
+ * (scripts externos, prefetch RSC, extensões, rede momentânea). Em dev isso é ruído.
+ */
+function useDevSuppressBenignFetchRejectionOverlay() {
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+
+    const onUnhandledRejection = (ev: PromiseRejectionEvent) => {
+      if (!isBenignNetworkFailure(ev.reason)) return;
+      ev.preventDefault();
+      if (process.env.NODE_ENV === "development") {
+        console.debug("[dev] fetch falhou (suprimido overlay):", ev.reason);
+      }
+    };
+
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    return () => window.removeEventListener("unhandledrejection", onUnhandledRejection);
+  }, []);
+}
+
 function useDevFetchInterceptor() {
   const origRef = useRef<typeof window.fetch | null>(null);
 
@@ -85,7 +117,6 @@ function useDevFetchInterceptor() {
     origRef.current = orig;
 
     window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      const res = await orig(input, init);
       const url =
         typeof input === "string"
           ? input
@@ -93,6 +124,28 @@ function useDevFetchInterceptor() {
             ? input.href
             : input.url;
       const method = (init?.method ?? "GET").toUpperCase();
+
+      let res: Response;
+      try {
+        res = await orig(input, init);
+      } catch (e) {
+        const detail = e instanceof Error ? e.message : String(e);
+        if (url.includes("/api/")) {
+          pushLog({
+            method,
+            url,
+            status: 0,
+            statusText: "Fetch failed",
+            detail,
+          });
+          toast.error(`API (rede) — ${method}`, {
+            description: `${url}\n\n${detail}`,
+            duration: 45_000,
+            closeButton: true,
+          });
+        }
+        throw e;
+      }
 
       if (url.includes("/api/") && !res.ok) {
         let detail = "";
@@ -151,6 +204,7 @@ function useDevFetchInterceptor() {
 }
 
 export function DevToolsProvider() {
+  useDevSuppressBenignFetchRejectionOverlay();
   useDevFetchInterceptor();
 
   if (process.env.NODE_ENV === "production") return null;
