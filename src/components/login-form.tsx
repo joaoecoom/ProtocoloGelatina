@@ -49,7 +49,7 @@ export function LoginForm({
     const requestedNext = new URLSearchParams(window.location.search).get("next");
     const safeNext =
       requestedNext?.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : null;
-    const nextPath = safeNext ?? (data.user.onboardingCompleted ? "/app" : "/onboarding");
+    const nextPath = safeNext ?? (data.user.onboardingCompleted ? "/app-install" : "/onboarding");
     router.push(nextPath);
     router.refresh();
     // Fallback para browsers embebidos onde o router client pode falhar.

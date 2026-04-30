@@ -5,6 +5,6 @@ import { OnboardingPageClient } from "./onboarding-page-client";
 export default async function OnboardingPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/entrar");
-  if (user.onboardingCompleted) redirect("/app");
+  if (user.onboardingCompleted) redirect("/app-install");
   return <OnboardingPageClient />;
 }

@@ -36,7 +36,7 @@ export function RegisterForm() {
       return;
     }
     if (data.user?.onboardingCompleted) {
-      router.push("/app");
+      router.push("/app-install");
     } else {
       router.push("/onboarding");
     }

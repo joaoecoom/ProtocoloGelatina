@@ -5,6 +5,7 @@ import { BrandLogo } from "@/components/brand-logo";
 import { BottomNav } from "@/components/bottom-nav";
 import { WelcomeGuideModal } from "@/components/welcome-guide-modal";
 import { AppHeaderLinks } from "@/components/app-header-links";
+import { AppInstallGate } from "@/components/app-install-gate";
 
 export default async function AppShellLayout({
   children,
@@ -60,6 +61,7 @@ export default async function AppShellLayout({
         userId={user.id}
         showFromServer={user.welcomeGuideDismissedAt == null}
       />
+      <AppInstallGate isSuperAdmin={user.isSuperAdmin} />
       {children}
       <BottomNav />
     </div>

@@ -73,7 +73,7 @@ export function OnboardingForm() {
       window.localStorage.setItem("pg-onboarding-quiz-v1", JSON.stringify(quiz));
       window.dispatchEvent(new CustomEvent("pg-radar-refresh"));
     }
-    router.push("/app");
+    router.push("/app-install");
     router.refresh();
   }
 
