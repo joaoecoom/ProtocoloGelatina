@@ -146,11 +146,3 @@
   }
 }
 
-/* Evita zoom automático nos inputs em iOS Safari (>=16px) */
-@media screen and (max-width: 640px) {
-  input,
-  textarea,
-  select {
-    font-size: 16px;
-  }
-}

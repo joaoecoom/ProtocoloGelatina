@@ -11,7 +11,7 @@ const steps = [
   {
     title: "1. Começa no Início (dashboard)",
     body: "Atualiza o teu peso, regista água e como te sentes (inchaço, energia, fome, sono). No fim do dia, confirma o ritual com «Já fiz a minha gelatina hoje» — assim o streak acompanha-te.",
-    href: "/app",
+    href: "/dashboard",
     cta: "Ir para o Início",
   },
   {
@@ -58,7 +58,7 @@ export function WelcomeGuideModal({ userId, showFromServer }: Props) {
   }, [userId, showFromServer]);
 
   const dismiss = useCallback(
-    async (navigateTo?: "/app") => {
+    async (navigateTo?: "/dashboard") => {
       try {
         window.localStorage.setItem(storageKey(userId), "1");
       } catch {
@@ -135,7 +135,7 @@ export function WelcomeGuideModal({ userId, showFromServer }: Props) {
           <PrimaryButton
             type="button"
             className="w-full sm:w-auto"
-            onClick={() => dismiss("/app")}
+            onClick={() => dismiss("/dashboard")}
           >
             Começar no Início
           </PrimaryButton>

@@ -5,8 +5,11 @@ import Script from "next/script";
  * CAPI é enviada a partir do servidor em `dispatchEventToIntegrations`.
  */
 export function MetaUtmifyScripts() {
+  const isProduction = process.env.NODE_ENV === "production";
   const metaPixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID?.trim();
   const utmifyPixelId = process.env.NEXT_PUBLIC_UTMIFY_PIXEL_ID?.trim();
+
+  if (!isProduction) return null;
 
   return (
     <>

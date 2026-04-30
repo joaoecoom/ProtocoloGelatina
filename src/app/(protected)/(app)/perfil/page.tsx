@@ -67,7 +67,7 @@ export default async function PerfilPage() {
         </Link>
       </GlassCard>
 
-      <Link href="/app" className="text-sm font-semibold text-rose-500 hover:underline">
+      <Link href="/dashboard" className="text-sm font-semibold text-rose-500 hover:underline">
         ← Voltar ao início
       </Link>
     </div>

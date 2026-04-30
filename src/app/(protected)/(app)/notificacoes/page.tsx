@@ -36,7 +36,7 @@ export default async function NotificacoesPage() {
         </Link>
       </GlassCard>
       <Link
-        href="/app"
+        href="/dashboard"
         className="text-sm font-semibold text-pg-berry/90 decoration-pg-berry/20 underline-offset-4 hover:underline"
       >
         ← Voltar ao início

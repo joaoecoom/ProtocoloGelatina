@@ -228,7 +228,7 @@ export default async function QuizDashboardPage({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/entrar?next=/quizdashboard");
-  if (user.email.toLowerCase() !== ADMIN_EMAIL && !user.isSuperAdmin) redirect("/app");
+  if (user.email.toLowerCase() !== ADMIN_EMAIL && !user.isSuperAdmin) redirect("/dashboard");
   const cookieStore = await cookies();
   const hasDashboardAccess = cookieStore.get(DASHBOARD_ACCESS_COOKIE)?.value === "ok";
 
