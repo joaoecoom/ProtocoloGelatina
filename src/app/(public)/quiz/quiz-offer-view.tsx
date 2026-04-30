@@ -283,6 +283,30 @@ function getStepId(params: {
 
 const CONTINUE_BUTTON_CLASS =
   "quiz-cta-pulse relative flex items-center justify-center rounded-2xl bg-emerald-600 px-6 font-semibold text-white shadow-[0_8px_0_#0b8a61] transition-all hover:brightness-105 active:translate-y-[2px] active:shadow-[0_6px_0_#0b8a61] disabled:translate-y-0 disabled:shadow-none disabled:opacity-50 disabled:animate-none";
+
+/** Option-only steps: advance on tap; no separate “Continuar” row (matches bottom button visibility). */
+const QUESTION_IDS_WITHOUT_INLINE_CONTINUE = new Set<string>([
+  "sono-horas",
+  "hidratacao",
+  "impede-emagrecer",
+  "kilos",
+  "area-gordura",
+  "impacto-vida",
+  "aparencia-fisica",
+  "tempo",
+  "sexo",
+  "idade",
+  "meta-quilos",
+  "tipo-corpo",
+]);
+
+function questionHasInlineContinue(questionId: string): boolean {
+  return !QUESTION_IDS_WITHOUT_INLINE_CONTINUE.has(questionId);
+}
+
+/** Etapas 25 / 29 (debug) + histórias longas: sem CTA sticky nem optimização “above the fold”. */
+const READ_HEAVY_QUESTION_IDS = new Set<string>(["prova-mariana", "depoimento-claudia"]);
+
 const SHOW_STEP_DEBUG_NAV = true;
 const APOIO_OPTIONS = [
   { id: "passo", label: "Ter o próximo passo claro", score: 3 },
@@ -426,6 +450,72 @@ export default function QuizOfferView() {
     showFinalSalesStep,
     postPreSalesStep,
   });
+
+  const isStep25PreSalesLong = isDone && !showFinalSalesStep && postPreSalesStep === 0;
+  const isStep29FinalSales = showFinalSalesStep;
+
+  const quizContinueDisabled = useMemo(() => {
+    if (!current) return true;
+    const c = current.id;
+    const needsSelectionBlock =
+      c !== "prova-mariana" &&
+      c !== "explicacao-gelatina" &&
+      c !== "depoimento-claudia" &&
+      c !== "mensagem-receitinha" &&
+      c !== "peso-atual" &&
+      c !== "altura" &&
+      c !== "peso-desejado" &&
+      c !== "nome" &&
+      (c === "goal"
+        ? goalSelections.length === 0
+        : c === "dificuldade-peso"
+          ? dificuldadeSelections.length === 0
+          : c === "beneficios"
+            ? beneficiosSelections.length === 0
+            : c === "fruta-preferida"
+              ? frutaSelections.length === 0
+              : !answers[c]);
+
+    return (
+      needsSelectionBlock ||
+      (c === "nome" && !leadName.trim()) ||
+      (c === "peso-atual" && !leadWeight.trim()) ||
+      (c === "altura" && !leadHeight.trim()) ||
+      (c === "peso-desejado" && !leadDesiredWeight.trim())
+    );
+  }, [
+    current,
+    answers,
+    goalSelections,
+    dificuldadeSelections,
+    beneficiosSelections,
+    frutaSelections,
+    leadName,
+    leadWeight,
+    leadHeight,
+    leadDesiredWeight,
+  ]);
+
+  const canContinueQuiz = !quizContinueDisabled;
+
+  const exemptMobileStickyAndFold =
+    isStep25PreSalesLong ||
+    isStep29FinalSales ||
+    (current ? READ_HEAVY_QUESTION_IDS.has(current.id) : false);
+
+  const showStickyQuizCta =
+    isQuestionStep &&
+    Boolean(current) &&
+    questionHasInlineContinue(current!.id) &&
+    !exemptMobileStickyAndFold &&
+    canContinueQuiz;
+
+  const preSalesContinueDisabled =
+    (postPreSalesStep === 1 && !apoioSelection) || (postPreSalesStep === 2 && !corpoSonhosSelection);
+
+  const showStickyPreSalesCta =
+    isDone && !showFinalSalesStep && postPreSalesStep > 0 && !preSalesContinueDisabled;
+
   const debugStepLabel = useMemo(() => {
     if (showFinalSalesStep) return "29 · final-sales";
     if (isDone) {
@@ -1018,7 +1108,14 @@ export default function QuizOfferView() {
   }
 
   return (
-    <main className="min-h-dvh bg-white px-4 pb-14 pt-7 sm:px-6">
+    <main
+      className={[
+        "min-h-dvh bg-white px-4 pt-7 sm:px-6",
+        showStickyQuizCta || showStickyPreSalesCta
+          ? "pb-14 max-sm:pb-[calc(7rem+env(safe-area-inset-bottom,0px))]"
+          : "pb-14",
+      ].join(" ")}
+    >
       <div className="mx-auto w-full max-w-5xl">
         {checkoutDevMock ? (
           <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm">
@@ -1059,42 +1156,47 @@ export default function QuizOfferView() {
             </button>
           </div>
         ) : null}
-        <div className="mx-auto mb-8 w-fit">
+        <div className="mx-auto mb-4 w-fit sm:mb-8">
           <BrandLogo variant="auth" className="w-24 sm:w-28" />
         </div>
 
         {isIntro ? (
           <section className="mx-auto max-w-[860px]">
-            <div className="rounded-3xl border border-pg-forest/10 bg-white p-6 sm:p-8">
-              <div className="mx-auto w-full max-w-[560px] rounded-2xl border border-pg-forest/10 bg-gradient-to-b from-rose-50 via-white to-emerald-50 px-6 py-10">
-                <Image
-                  src="/quiz-main-v3.png"
-                  alt="Gelatina Inteligente"
-                  width={1200}
-                  height={1200}
-                  priority
-                  className="mx-auto h-auto w-full max-w-[520px] rounded-xl object-contain"
-                />
+            <div className="flex flex-col sm:block">
+              <p className="order-1 text-balance text-center text-[22px] font-extrabold leading-tight text-pg-ink sm:order-none sm:mb-6 sm:text-left sm:text-[28px]">
+                <span className="text-red-600">Atencao:</span> oferecemos apenas{" "}
+                <span className="text-pg-ink">uma consulta por pessoa.</span>
+              </p>
+
+              <div className="order-2 mt-4 rounded-3xl border border-pg-forest/10 bg-white p-3 sm:order-none sm:p-6 md:p-8">
+                <div className="mx-auto w-full max-w-[560px] rounded-2xl border border-pg-forest/10 bg-gradient-to-b from-rose-50 via-white to-emerald-50 px-3 py-4 sm:px-6 sm:py-10">
+                  <Image
+                    src="/quiz-main-v3.png"
+                    alt="Gelatina Inteligente"
+                    width={1200}
+                    height={1200}
+                    priority
+                    className="mx-auto h-auto max-h-[min(220px,32vh)] w-full max-w-[520px] rounded-xl object-contain sm:max-h-none"
+                  />
+                </div>
               </div>
+
+              <p className="order-3 mt-4 text-center text-[17px] leading-snug text-pg-ink sm:order-none sm:mt-8 sm:text-[28px] sm:leading-relaxed md:text-[32px]">
+                Se voce sair, perdera a sua vez. Aproveite essa oportunidade exclusiva!
+              </p>
+
+              <button
+                type="button"
+                onClick={next}
+                className={`order-4 mt-5 h-14 w-full text-lg sm:order-none sm:mt-9 sm:h-16 sm:text-xl ${CONTINUE_BUTTON_CLASS}`}
+              >
+                Começar diagnóstico
+              </button>
             </div>
-
-            <p className="mt-8 text-[28px] leading-relaxed text-pg-ink sm:text-[32px]">
-              <span className="font-extrabold text-red-600">Atencao:</span> oferecemos apenas{" "}
-              <span className="font-extrabold">uma consulta por pessoa.</span> Se voce sair, perdera a sua vez.
-              Aproveite essa oportunidade exclusiva!
-            </p>
-
-            <button
-              type="button"
-              onClick={next}
-              className={`mt-9 h-16 w-full text-xl ${CONTINUE_BUTTON_CLASS}`}
-            >
-              FAZER TESTE GRATIS
-            </button>
           </section>
         ) : !isDone && isQuestionStep && current ? (
           <section className="mx-auto max-w-[820px]">
-            <div className="mx-auto mb-10 max-w-[640px]">
+            <div className="mx-auto mb-4 max-w-[640px] sm:mb-10">
               <div className="h-3 rounded-full bg-neutral-100">
                 <div
                   className="h-3 rounded-full bg-emerald-600 transition-all"
@@ -1103,7 +1205,7 @@ export default function QuizOfferView() {
               </div>
             </div>
 
-            <div className="mb-8 text-center">
+            <div className="mb-4 text-center sm:mb-8">
               {current.id === "kilos" ? (
                 <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
                   Quantos quilos voce
@@ -1164,8 +1266,11 @@ export default function QuizOfferView() {
                   tete quais desses benefícios gostaria de ter?
                 </h1>
               ) : current.id === "depoimento-claudia" ? (
-                <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
-                  🔥 Histórias Reais de Transformação!
+                <h1 className="flex flex-wrap items-center justify-center gap-2 text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
+                  <span className="inline-flex h-[1.15em] shrink-0 items-center justify-center text-[1.1em] leading-none" aria-hidden>
+                    🔥
+                  </span>
+                  <span>Histórias Reais de Transformação!</span>
                 </h1>
               ) : current.id === "peso-atual" ? (
                 <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
@@ -1180,9 +1285,14 @@ export default function QuizOfferView() {
                   Qual é o seu peso desejado?
                 </h1>
               ) : current.id === "mensagem-receitinha" ? (
-                <h1 className="mx-auto max-w-[560px] text-balance text-sm font-medium leading-relaxed text-pg-ink sm:text-base">
-                  Fique tranquila! Assim que você finalizar sua avaliação, você vai receber a sua receitinha no seu
-                  E-mail e no seu Whatsapp 💌
+                <h1 className="mx-auto flex max-w-[560px] flex-wrap items-center justify-center gap-x-1 text-balance text-sm font-medium leading-relaxed text-pg-ink sm:text-base">
+                  <span>
+                    Fique tranquila! Assim que você finalizar sua avaliação, você vai receber a sua receitinha no seu
+                    E-mail e no seu Whatsapp
+                  </span>
+                  <span className="inline-flex h-[1.2em] items-center text-[1.15em] leading-none" aria-hidden>
+                    💌
+                  </span>
                 </h1>
               ) : (
                 <h1 className="text-balance text-2xl font-semibold leading-tight text-pg-ink sm:text-3xl">
@@ -1433,7 +1543,7 @@ export default function QuizOfferView() {
                       onClick={() => selectOption(current.id, option.id, option.score)}
                       className={[
                         current.id === "idade"
-                          ? "relative min-h-[250px] overflow-hidden rounded-2xl border-2 p-0 transition"
+                          ? "relative min-h-[200px] overflow-hidden rounded-2xl border-2 p-0 transition sm:min-h-[250px]"
                           : current.id === "tipo-corpo"
                             ? "relative min-h-[108px] overflow-hidden rounded-2xl border-2 p-0 transition"
                             : current.id === "impacto-vida"
@@ -1447,9 +1557,9 @@ export default function QuizOfferView() {
                             : current.id === "hidratacao"
                               ? "relative min-h-[124px] overflow-hidden rounded-2xl border-2 p-0 transition"
                             : current.id === "fruta-preferida"
-                              ? "relative min-h-[210px] overflow-hidden rounded-2xl border-2 p-0 transition"
+                              ? "relative min-h-[180px] overflow-hidden rounded-2xl border-2 p-0 transition sm:min-h-[210px]"
                             : current.id === "corpo-sonhos"
-                              ? "relative min-h-[250px] overflow-hidden rounded-2xl border-2 p-0 transition"
+                              ? "relative min-h-[210px] overflow-hidden rounded-2xl border-2 p-0 transition sm:min-h-[250px]"
                             : current.id === "dificuldade-peso"
                               ? "relative min-h-[180px] overflow-hidden rounded-2xl border-2 p-0 transition sm:min-h-[210px]"
                             : current.id === "impede-emagrecer"
@@ -1457,9 +1567,9 @@ export default function QuizOfferView() {
                             : current.id === "beneficios"
                               ? "relative min-h-[126px] overflow-hidden rounded-2xl border-2 p-0 transition sm:min-h-[138px]"
                             : current.id === "meta-quilos"
-                            ? "relative min-h-[250px] overflow-hidden rounded-2xl border-2 p-0 transition"
+                            ? "relative min-h-[200px] overflow-hidden rounded-2xl border-2 p-0 transition sm:min-h-[250px]"
                             : current.id === "sexo"
-                            ? "relative min-h-[250px] overflow-hidden rounded-2xl border-2 p-0 transition"
+                            ? "relative min-h-[200px] overflow-hidden rounded-2xl border-2 p-0 transition sm:min-h-[250px]"
                             : "flex min-h-[108px] items-center gap-4 rounded-2xl border-2 px-4 py-3 text-left transition",
                         selected
                           ? current.id === "kilos"
@@ -1528,7 +1638,7 @@ export default function QuizOfferView() {
                       ) : current.id === "impacto-vida" ? (
                         <>
                           <div className="absolute inset-0 bg-white" />
-                          <span className="absolute left-8 top-1/2 -translate-y-1/2 text-4xl">
+                          <span className="absolute left-8 top-1/2 inline-flex -translate-y-1/2 items-center justify-center text-4xl leading-none">
                             {option.id === "vergonha-fotos"
                               ? "🤦"
                               : option.id === "parceiro-saude"
@@ -1546,7 +1656,7 @@ export default function QuizOfferView() {
                       ) : current.id === "aparencia-fisica" ? (
                         <>
                           <div className="absolute inset-0 bg-white" />
-                          <span className="absolute left-8 top-1/2 -translate-y-1/2 text-4xl">
+                          <span className="absolute left-8 top-1/2 inline-flex -translate-y-1/2 items-center justify-center text-4xl leading-none">
                             {option.id === "nao-autoestima"
                               ? "😢"
                               : option.id === "sim-saude"
@@ -1723,7 +1833,7 @@ export default function QuizOfferView() {
             )}
 
             {current.id === "sexo" ? (
-              <div className="mt-8 rounded-2xl border-2 border-emerald-600/60 bg-emerald-50/35 p-5">
+              <div className="mt-4 rounded-2xl border-2 border-emerald-600/60 bg-emerald-50/35 p-4 sm:mt-8 sm:p-5">
                 <p className="text-[24px] font-bold leading-tight text-pg-ink sm:text-[27px]">
                   As informacoes sao para fazer ajustes em seu plano exclusivo e personalizado.
                 </p>
@@ -1746,33 +1856,11 @@ export default function QuizOfferView() {
             current.id !== "idade" &&
             current.id !== "meta-quilos" &&
             current.id !== "tipo-corpo" ? (
-              <div className="mt-10">
+              <div className={showStickyQuizCta ? "mt-6 hidden sm:mt-10 sm:block" : "mt-6 sm:mt-10"}>
                 <button
                   type="button"
                   onClick={next}
-                  disabled={
-                    (current.id !== "prova-mariana" &&
-                      current.id !== "explicacao-gelatina" &&
-                      current.id !== "depoimento-claudia" &&
-                      current.id !== "mensagem-receitinha" &&
-                      current.id !== "peso-atual" &&
-                      current.id !== "altura" &&
-                      current.id !== "peso-desejado" &&
-                      current.id !== "nome" &&
-                      ((current.id === "goal"
-                        ? goalSelections.length === 0
-                        : current.id === "dificuldade-peso"
-                          ? dificuldadeSelections.length === 0
-                          : current.id === "beneficios"
-                            ? beneficiosSelections.length === 0
-                            : current.id === "fruta-preferida"
-                              ? frutaSelections.length === 0
-                          : !answers[current.id]))) ||
-                    (current.id === "nome" && !leadName.trim()) ||
-                    (current.id === "peso-atual" && !leadWeight.trim()) ||
-                    (current.id === "altura" && !leadHeight.trim()) ||
-                    (current.id === "peso-desejado" && !leadDesiredWeight.trim())
-                  }
+                  disabled={quizContinueDisabled}
                   className={`h-14 w-full text-lg ${CONTINUE_BUTTON_CLASS}`}
                 >
                   {current.id === "nome" ? "Enviar" : isLastQuestion ? "Ver resultado" : "Continuar"}
@@ -2068,13 +2156,11 @@ export default function QuizOfferView() {
               </section>
             ) : null}
 
-            <div className="space-y-2 pt-1">
+            <div className={showStickyPreSalesCta ? "hidden space-y-2 pt-1 sm:block" : "space-y-2 pt-1"}>
               <button
                 type="button"
                 onClick={continueAfterPreSales}
-                disabled={
-                  (postPreSalesStep === 1 && !apoioSelection) || (postPreSalesStep === 2 && !corpoSonhosSelection)
-                }
+                disabled={preSalesContinueDisabled}
                 className={`h-14 w-full text-base font-black ${CONTINUE_BUTTON_CLASS}`}
               >
                 {postPreSalesStep < 3 ? "Continuar" : "Quero Transformar Minha Vida Hoje!"}
@@ -2418,6 +2504,36 @@ export default function QuizOfferView() {
           </section>
         )}
       </div>
+
+      {showStickyQuizCta && current ? (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 md:hidden">
+          <div className="pointer-events-auto mx-auto w-full max-w-5xl border-t border-neutral-200/90 bg-gradient-to-t from-white from-[78%] to-white/70 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] pt-3 shadow-[0_-12px_32px_rgba(15,23,42,0.07)] backdrop-blur-[2px]">
+            <button
+              type="button"
+              onClick={next}
+              disabled={quizContinueDisabled}
+              className={`h-14 w-full text-lg ${CONTINUE_BUTTON_CLASS}`}
+            >
+              {current.id === "nome" ? "Enviar" : isLastQuestion ? "Ver resultado" : "Continuar"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {showStickyPreSalesCta ? (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 md:hidden">
+          <div className="pointer-events-auto mx-auto w-full max-w-5xl border-t border-neutral-200/90 bg-gradient-to-t from-white from-[78%] to-white/70 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] pt-3 shadow-[0_-12px_32px_rgba(15,23,42,0.07)] backdrop-blur-[2px]">
+            <button
+              type="button"
+              onClick={continueAfterPreSales}
+              disabled={preSalesContinueDisabled}
+              className={`h-14 w-full text-base font-black ${CONTINUE_BUTTON_CLASS}`}
+            >
+              {postPreSalesStep < 3 ? "Continuar" : "Quero Transformar Minha Vida Hoje!"}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
