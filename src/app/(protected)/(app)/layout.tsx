@@ -26,7 +26,7 @@ export default async function AppShellLayout({
       >
         <div className="min-w-0 flex-1" suppressHydrationWarning>
           <Link
-            href="/dashboard"
+            href="/app"
             className="mb-1.5 inline-block max-w-full focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-pg-berry/30 focus-visible:ring-offset-2 sm:mb-2"
             aria-label="Início / Protocolo Gelatina Inteligente"
           >

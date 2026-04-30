@@ -284,30 +284,6 @@ function getStepId(params: {
 const CONTINUE_BUTTON_CLASS =
   "quiz-cta-pulse relative flex items-center justify-center rounded-2xl bg-emerald-600 px-6 font-semibold text-white shadow-[0_8px_0_#0b8a61] transition-all hover:brightness-105 active:translate-y-[2px] active:shadow-[0_6px_0_#0b8a61] disabled:translate-y-0 disabled:shadow-none disabled:opacity-50 disabled:animate-none";
 
-/** Option-only steps: advance on tap; no separate “Continuar” row (matches bottom button visibility). */
-const QUESTION_IDS_WITHOUT_INLINE_CONTINUE = new Set<string>([
-  "sono-horas",
-  "hidratacao",
-  "impede-emagrecer",
-  "kilos",
-  "area-gordura",
-  "impacto-vida",
-  "aparencia-fisica",
-  "tempo",
-  "sexo",
-  "idade",
-  "meta-quilos",
-  "tipo-corpo",
-]);
-
-function questionHasInlineContinue(questionId: string): boolean {
-  return !QUESTION_IDS_WITHOUT_INLINE_CONTINUE.has(questionId);
-}
-
-/** Etapas 25 / 29 (debug) + histórias longas: sem CTA sticky nem optimização “above the fold”. */
-const READ_HEAVY_QUESTION_IDS = new Set<string>(["prova-mariana", "depoimento-claudia"]);
-
-const SHOW_STEP_DEBUG_NAV = true;
 const APOIO_OPTIONS = [
   { id: "passo", label: "Ter o próximo passo claro", score: 3 },
   { id: "lembretes", label: "Lembretes e notificações", score: 2 },
@@ -451,9 +427,6 @@ export default function QuizOfferView() {
     postPreSalesStep,
   });
 
-  const isStep25PreSalesLong = isDone && !showFinalSalesStep && postPreSalesStep === 0;
-  const isStep29FinalSales = showFinalSalesStep;
-
   const quizContinueDisabled = useMemo(() => {
     if (!current) return true;
     const c = current.id;
@@ -496,36 +469,8 @@ export default function QuizOfferView() {
     leadDesiredWeight,
   ]);
 
-  const canContinueQuiz = !quizContinueDisabled;
-
-  const exemptMobileStickyAndFold =
-    isStep25PreSalesLong ||
-    isStep29FinalSales ||
-    (current ? READ_HEAVY_QUESTION_IDS.has(current.id) : false);
-
-  const showStickyQuizCta =
-    isQuestionStep &&
-    Boolean(current) &&
-    questionHasInlineContinue(current!.id) &&
-    !exemptMobileStickyAndFold &&
-    canContinueQuiz;
-
   const preSalesContinueDisabled =
     (postPreSalesStep === 1 && !apoioSelection) || (postPreSalesStep === 2 && !corpoSonhosSelection);
-
-  const showStickyPreSalesCta =
-    isDone && !showFinalSalesStep && postPreSalesStep > 0 && !preSalesContinueDisabled;
-
-  const debugStepLabel = useMemo(() => {
-    if (showFinalSalesStep) return "29 · final-sales";
-    if (isDone) {
-      if (postPreSalesStep === 1) return "26 · apoio";
-      if (postPreSalesStep === 2) return "27 · corpo-sonhos";
-      if (postPreSalesStep === 3) return "28 · mensagem-receitinha";
-      return "25 · pre-sales";
-    }
-    return `${step} · ${currentStepId}`;
-  }, [showFinalSalesStep, isDone, postPreSalesStep, step, currentStepId]);
 
   useEffect(() => {
     if (hasTrackedLandingRef.current) return;
@@ -1029,36 +974,6 @@ export default function QuizOfferView() {
     goToFinalSalesStep();
   }
 
-  function debugGoPrevStep() {
-    if (showFinalSalesStep) {
-      setShowFinalSalesStep(false);
-      setPostPreSalesStep(3);
-      return;
-    }
-    if (isDone && postPreSalesStep > 0) {
-      setPostPreSalesStep((prev) => Math.max(0, prev - 1));
-      return;
-    }
-    setStep((prev) => Math.max(0, prev - 1));
-  }
-
-  function debugGoNextStep() {
-    if (showFinalSalesStep) return;
-    if (isDone) {
-      if (postPreSalesStep < 3) {
-        setPostPreSalesStep((prev) => Math.min(3, prev + 1));
-        return;
-      }
-      setShowFinalSalesStep(true);
-      return;
-    }
-    if (step >= QUESTIONS.length + 2) {
-      setShowFinalSalesStep(true);
-      return;
-    }
-    setStep((prev) => Math.min(QUESTIONS.length + 2, prev + 1));
-  }
-
   async function startCheckout() {
     if (isStartingCheckout) return;
     setIsStartingCheckout(true);
@@ -1108,14 +1023,7 @@ export default function QuizOfferView() {
   }
 
   return (
-    <main
-      className={[
-        "min-h-dvh bg-white px-4 pt-7 sm:px-6",
-        showStickyQuizCta || showStickyPreSalesCta
-          ? "pb-14 max-sm:pb-[calc(7rem+env(safe-area-inset-bottom,0px))]"
-          : "pb-14",
-      ].join(" ")}
-    >
+    <main className="min-h-dvh bg-white px-4 pb-14 pt-7 sm:px-6">
       <div className="mx-auto w-full max-w-5xl">
         {checkoutDevMock ? (
           <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm">
@@ -1132,27 +1040,6 @@ export default function QuizOfferView() {
               onClick={() => router.replace("/quiz")}
             >
               Fechar aviso
-            </button>
-          </div>
-        ) : null}
-        {SHOW_STEP_DEBUG_NAV ? (
-          <div className="mb-4 flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
-            <button
-              type="button"
-              onClick={debugGoPrevStep}
-              className="rounded-md border border-emerald-300 bg-white px-3 py-1 font-semibold text-emerald-700"
-            >
-              ← Etapa
-            </button>
-            <span className="font-medium text-emerald-800">
-              Step {debugStepLabel}
-            </span>
-            <button
-              type="button"
-              onClick={debugGoNextStep}
-              className="rounded-md border border-emerald-300 bg-white px-3 py-1 font-semibold text-emerald-700"
-            >
-              Etapa →
             </button>
           </div>
         ) : null}
@@ -1542,7 +1429,7 @@ export default function QuizOfferView() {
                       onClick={() => selectOption(current.id, option.id, option.score)}
                       className={[
                         current.id === "idade"
-                          ? "relative min-h-[200px] overflow-hidden rounded-2xl border-2 p-0 transition sm:min-h-[250px]"
+                          ? "relative min-h-[220px] overflow-hidden rounded-2xl border-2 p-0 transition sm:min-h-[250px]"
                           : current.id === "tipo-corpo"
                             ? "relative min-h-[108px] overflow-hidden rounded-2xl border-2 p-0 transition"
                             : current.id === "impacto-vida"
@@ -1591,7 +1478,7 @@ export default function QuizOfferView() {
                       {current.id === "idade" ? (
                         <>
                           <div className="absolute inset-0 bg-gradient-to-b from-emerald-50 via-white to-white" />
-                          <div className="absolute left-1/2 top-6 h-36 w-[72%] -translate-x-1/2 overflow-hidden rounded-xl ring-1 ring-black/5">
+                          <div className="absolute left-1/2 top-4 h-32 w-[72%] -translate-x-1/2 overflow-hidden rounded-xl ring-1 ring-black/5 sm:top-6 sm:h-36">
                             <Image
                               src={
                                 option.id === "18-26"
@@ -1608,7 +1495,7 @@ export default function QuizOfferView() {
                               className="object-contain"
                             />
                           </div>
-                          <span className="absolute bottom-5 left-1/2 -translate-x-1/2 text-lg font-medium text-pg-ink sm:text-xl">
+                          <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md bg-white/95 px-2 py-0.5 text-lg font-medium leading-none text-pg-ink sm:bottom-5 sm:bg-transparent sm:px-0 sm:py-0 sm:text-xl">
                             {option.label}
                           </span>
                         </>
@@ -1637,36 +1524,40 @@ export default function QuizOfferView() {
                       ) : current.id === "impacto-vida" ? (
                         <>
                           <div className="absolute inset-0 bg-white" />
-                          <span className="absolute left-8 top-1/2 inline-flex -translate-y-1/2 items-center justify-center text-4xl leading-none">
-                            {option.id === "vergonha-fotos"
-                              ? "🤦"
-                              : option.id === "parceiro-saude"
-                                ? "😞"
-                                : option.id === "julgado"
-                                  ? "😢"
-                                  : option.id === "romanticos"
-                                    ? "💔"
-                                    : "👋"}
-                          </span>
-                          <span className="absolute left-1/2 top-1/2 w-[72%] -translate-x-1/2 -translate-y-1/2 text-center text-base font-medium leading-tight text-pg-ink sm:text-lg">
-                            {option.label}
-                          </span>
+                          <div className="absolute inset-0 flex items-center gap-3 px-5 sm:px-6">
+                            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-4xl leading-none">
+                              {option.id === "vergonha-fotos"
+                                ? "🤦"
+                                : option.id === "parceiro-saude"
+                                  ? "😞"
+                                  : option.id === "julgado"
+                                    ? "😢"
+                                    : option.id === "romanticos"
+                                      ? "💔"
+                                      : "👋"}
+                            </span>
+                            <span className="min-w-0 flex-1 text-center text-base font-medium leading-tight text-pg-ink sm:text-lg">
+                              {option.label}
+                            </span>
+                          </div>
                         </>
                       ) : current.id === "aparencia-fisica" ? (
                         <>
                           <div className="absolute inset-0 bg-white" />
-                          <span className="absolute left-8 top-1/2 inline-flex -translate-y-1/2 items-center justify-center text-4xl leading-none">
-                            {option.id === "nao-autoestima"
-                              ? "😢"
-                              : option.id === "sim-saude"
-                                ? "😞"
-                                : option.id === "nao-bemestar"
-                                  ? "😪"
-                                  : "🤦"}
-                          </span>
-                          <span className="absolute left-1/2 top-1/2 w-[72%] -translate-x-1/2 -translate-y-1/2 text-center text-base font-medium leading-tight text-pg-ink sm:text-lg">
-                            {option.label}
-                          </span>
+                          <div className="absolute inset-0 flex items-center gap-3 px-5 sm:px-6">
+                            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-4xl leading-none">
+                              {option.id === "nao-autoestima"
+                                ? "😢"
+                                : option.id === "sim-saude"
+                                  ? "😞"
+                                  : option.id === "nao-bemestar"
+                                    ? "😪"
+                                    : "🤦"}
+                            </span>
+                            <span className="min-w-0 flex-1 text-center text-base font-medium leading-tight text-pg-ink sm:text-lg">
+                              {option.label}
+                            </span>
+                          </div>
                         </>
                       ) : current.id === "dificuldade-peso" ? (
                         <>
@@ -1855,7 +1746,7 @@ export default function QuizOfferView() {
             current.id !== "idade" &&
             current.id !== "meta-quilos" &&
             current.id !== "tipo-corpo" ? (
-              <div className={showStickyQuizCta ? "mt-6 hidden sm:mt-10 sm:block" : "mt-6 sm:mt-10"}>
+              <div className="mt-4 sm:mt-8">
                 <button
                   type="button"
                   onClick={next}
@@ -2155,7 +2046,7 @@ export default function QuizOfferView() {
               </section>
             ) : null}
 
-            <div className={showStickyPreSalesCta ? "hidden space-y-2 pt-1 sm:block" : "space-y-2 pt-1"}>
+            <div className="space-y-2 pt-1">
               <button
                 type="button"
                 onClick={continueAfterPreSales}
@@ -2504,35 +2395,6 @@ export default function QuizOfferView() {
         )}
       </div>
 
-      {showStickyQuizCta && current ? (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 md:hidden">
-          <div className="pointer-events-auto mx-auto w-full max-w-5xl border-t border-neutral-200/90 bg-gradient-to-t from-white from-[78%] to-white/70 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] pt-3 shadow-[0_-12px_32px_rgba(15,23,42,0.07)] backdrop-blur-[2px]">
-            <button
-              type="button"
-              onClick={next}
-              disabled={quizContinueDisabled}
-              className={`h-14 w-full text-lg ${CONTINUE_BUTTON_CLASS}`}
-            >
-              {current.id === "nome" ? "Enviar" : isLastQuestion ? "Ver resultado" : "Continuar"}
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {showStickyPreSalesCta ? (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 md:hidden">
-          <div className="pointer-events-auto mx-auto w-full max-w-5xl border-t border-neutral-200/90 bg-gradient-to-t from-white from-[78%] to-white/70 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] pt-3 shadow-[0_-12px_32px_rgba(15,23,42,0.07)] backdrop-blur-[2px]">
-            <button
-              type="button"
-              onClick={continueAfterPreSales}
-              disabled={preSalesContinueDisabled}
-              className={`h-14 w-full text-base font-black ${CONTINUE_BUTTON_CLASS}`}
-            >
-              {postPreSalesStep < 3 ? "Continuar" : "Quero Transformar Minha Vida Hoje!"}
-            </button>
-          </div>
-        </div>
-      ) : null}
     </main>
   );
 }

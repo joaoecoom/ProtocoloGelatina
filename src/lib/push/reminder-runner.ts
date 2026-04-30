@@ -107,7 +107,7 @@ async function runMealsForUser(user: UserWithSubs, now: Date): Promise<number> {
       title: "Marcação da refeição",
       body: `Marca o teu ${label.toLowerCase()} agora.`,
       tag: `pg-meal-${dateYmd}-${kind}`,
-      url: "/dashboard",
+      url: "/app",
     });
   }
   return sent;
@@ -197,7 +197,7 @@ async function runReactivationForUser(user: UserWithSubs, now: Date): Promise<nu
     title: "Volta ao teu ritual",
     body: "Abre o protocolo e retoma o ciclo — um passo de cada vez.",
     tag: "pg-reactivate",
-    url: "/dashboard",
+    url: "/app",
   });
 }
 

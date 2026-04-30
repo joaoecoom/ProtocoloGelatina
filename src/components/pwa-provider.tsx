@@ -21,7 +21,7 @@ type BeforeInstallPromptEvent = Event & {
 };
 
 const NOTIFY_PATH_PREFIXES = [
-  "/dashboard",
+  "/app",
   "/configuracoes",
   "/protocolo",
   "/definicoes",
@@ -30,11 +30,49 @@ const NOTIFY_PATH_PREFIXES = [
 
 export function PwaProvider() {
   const pathname = usePathname();
+  const isProd = process.env.NODE_ENV === "production";
   const deferredRef = useRef<BeforeInstallPromptEvent | null>(null);
+  const [isPaidEligible, setIsPaidEligible] = useState(false);
+  const [eligibilityChecked, setEligibilityChecked] = useState(false);
   const [showInstall, setShowInstall] = useState(false);
   const [showNotifyNudge, setShowNotifyNudge] = useState(false);
 
   useEffect(() => {
+    if (!isProd) {
+      setIsPaidEligible(false);
+      setEligibilityChecked(true);
+      return;
+    }
+    let active = true;
+    const checkEligibility = async () => {
+      try {
+        const res = await fetch("/api/pwa/eligibility", { method: "GET" });
+        const data = (await res.json().catch(() => ({}))) as { canInstall?: boolean };
+        if (!active) return;
+        setIsPaidEligible(Boolean(data.canInstall));
+      } catch {
+        if (!active) return;
+        setIsPaidEligible(false);
+      } finally {
+        if (active) setEligibilityChecked(true);
+      }
+    };
+    void checkEligibility();
+    return () => {
+      active = false;
+    };
+  }, [isProd]);
+
+  useEffect(() => {
+    if (!isProd) {
+      if ("serviceWorker" in navigator) {
+        void navigator.serviceWorker.getRegistrations().then((regs) => {
+          regs.forEach((reg) => void reg.unregister());
+        });
+      }
+      return;
+    }
+    if (!eligibilityChecked || !isPaidEligible) return;
     if (!("serviceWorker" in navigator)) return;
 
     navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {
@@ -56,9 +94,11 @@ export function PwaProvider() {
     window.addEventListener("beforeinstallprompt", onBip);
 
     return () => window.removeEventListener("beforeinstallprompt", onBip);
-  }, []);
+  }, [eligibilityChecked, isPaidEligible, isProd]);
 
   useEffect(() => {
+    if (!isProd) return;
+    if (!eligibilityChecked || !isPaidEligible) return;
     const checkNotify = async () => {
       if (isStandalone()) return;
       const allowed = NOTIFY_PATH_PREFIXES.some((p) => pathname.startsWith(p));
@@ -81,7 +121,7 @@ export function PwaProvider() {
     };
 
     void checkNotify();
-  }, [pathname]);
+  }, [eligibilityChecked, isPaidEligible, isProd, pathname]);
 
   async function onInstallClick() {
     const ev = deferredRef.current;
@@ -115,6 +155,7 @@ export function PwaProvider() {
     }
   }
 
+  if (!eligibilityChecked || !isPaidEligible) return null;
   if (!showInstall && !showNotifyNudge) return null;
 
   return (

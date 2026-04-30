@@ -240,14 +240,6 @@ export default function QuizEmbeddedCheckoutPage() {
     isDownsell22Step;
   const currentTransition = STEP_TRANSITIONS[currentStep.id];
 
-  function goPrevStep() {
-    setStepIndex((prev) => Math.max(0, prev - 1));
-  }
-
-  function goNextStep() {
-    setStepIndex((prev) => Math.min(FUNNEL_STEPS.length - 1, prev + 1));
-  }
-
   function goToThankYou(reason: string) {
     if (!hasPaidFront) {
       window.location.assign("/quiz");
@@ -421,38 +413,6 @@ export default function QuizEmbeddedCheckoutPage() {
   return (
     <main className="min-h-dvh bg-[linear-gradient(180deg,#fff_0%,#fff7fb_56%,#ffffff_100%)] px-4 pb-12 pt-6 sm:px-6">
       <section className="mx-auto w-full max-w-5xl space-y-5">
-        <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-                Etapa do funil
-              </p>
-              <p className="text-lg font-black text-neutral-900">
-                {stepIndex + 1}/{FUNNEL_STEPS.length} · {currentStep.label}
-              </p>
-              <p className="text-xs text-neutral-600">{currentStep.description}</p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={goPrevStep}
-                disabled={stepIndex === 0}
-                className="h-10 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-semibold text-neutral-800 disabled:opacity-50"
-              >
-                Anterior
-              </button>
-              <button
-                type="button"
-                onClick={goNextStep}
-                disabled={stepIndex === FUNNEL_STEPS.length - 1}
-                className="h-10 rounded-lg border border-neutral-900 bg-neutral-900 px-3 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                Proximo
-              </button>
-            </div>
-          </div>
-        </div>
-
         {checkoutError ? (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {checkoutError}

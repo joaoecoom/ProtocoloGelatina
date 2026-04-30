@@ -6,7 +6,7 @@ import { GlassCard } from "@/components/glass-card";
 export default async function AdminHomePage() {
   const user = await getCurrentUser();
   if (!user) redirect("/entrar");
-  if (!user.isSuperAdmin) redirect("/dashboard");
+  if (!user.isSuperAdmin) redirect("/app");
 
   return (
     <div className="space-y-5 pb-8">
@@ -58,7 +58,7 @@ export default async function AdminHomePage() {
         </ul>
       </GlassCard>
 
-      <Link href="/dashboard" className="text-sm font-semibold text-rose-500 hover:underline">
+      <Link href="/app" className="text-sm font-semibold text-rose-500 hover:underline">
         ← Voltar ao início
       </Link>
     </div>

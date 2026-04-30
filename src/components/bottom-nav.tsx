@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 
 const items = [
   {
-    href: "/dashboard",
+    href: "/app",
     label: "Início",
     icon: () => (
       <svg

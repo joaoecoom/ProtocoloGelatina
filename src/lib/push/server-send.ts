@@ -35,7 +35,7 @@ export async function sendWebPushToEndpoint(
     title: payload.title,
     body: payload.body,
     tag: payload.tag ?? "pg",
-    url: payload.url ?? "/dashboard",
+    url: payload.url ?? "/app",
   });
   try {
     await webpush.sendNotification(subscription, body, { TTL: 86_400 });
