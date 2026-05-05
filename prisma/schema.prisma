@@ -60,6 +60,7 @@ model User {
   chatMessages          ChatMessage[]
   pushSubscriptions     PushSubscription[]
   pushReminderLogs      PushReminderLog[]
+  metricsPurgeLogs      MetricsPurgeLog[]
 }
 
 /// Subscrição Web Push (FCM/APNs via browser); uma por endpoint/dispositivo.
@@ -207,4 +208,20 @@ model Event {
   @@index([anonymousId], map: "idx_events_anonymous_id")
   @@index([visitorId], map: "idx_events_visitor_id")
   @@map("events")
+}
+
+/// Histórico de resets de métricas (snapshot antes de eliminar eventos).
+model MetricsPurgeLog {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now()) @map("created_at")
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdByEmail  String   @map("created_by_email")
+  scope           String   @db.VarChar(32)
+  eventsRemoved   Int      @map("events_removed")
+  summaryBefore   Json     @map("summary_before")
+
+  createdBy User @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt(sort: Desc)])
+  @@map("metrics_purge_logs")
 }

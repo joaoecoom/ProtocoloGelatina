@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     httpOnly: true,
     sameSite: "lax",
     secure: isHttps,
-    path: "/quizdashboard",
+    path: "/",
     maxAge: 60 * 60 * 12,
   });
   return response;

@@ -1,8 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { isMetricsPurgePostAllowed } from "@/lib/allow-metrics-purge";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { MetricsPurgePanel, type MetricsPurgeLogDTO } from "./metrics-purge-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -613,6 +615,29 @@ export default async function QuizDashboardPage({
   const exportParams = new URLSearchParams(baseParams);
   exportParams.set("format", "csv");
 
+  let purgeLogs: MetricsPurgeLogDTO[] = [];
+  let purgeLogsUnavailable = false;
+  try {
+    const rows = await prisma.metricsPurgeLog.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 40,
+      select: {
+        id: true,
+        createdAt: true,
+        createdByEmail: true,
+        scope: true,
+        eventsRemoved: true,
+        summaryBefore: true,
+      },
+    });
+    purgeLogs = rows.map((r) => ({
+      ...r,
+      createdAt: r.createdAt.toISOString(),
+    }));
+  } catch {
+    purgeLogsUnavailable = true;
+  }
+
   const offerDecisionRollup = new Map<string, { accepted: number; rejected: number }>();
   for (const row of leadFunnelRows) {
     const decisions = row.offer_decisions ?? {};
@@ -676,6 +701,13 @@ export default async function QuizDashboardPage({
             Tráfego de teste interno está excluído dos cards/métricas. Na tabela por lead, aparece em azul claro.
           </p>
         </header>
+
+        <MetricsPurgePanel
+          initialLogs={purgeLogs}
+          exportHref={`/api/events/export?${exportParams.toString()}`}
+          tableUnavailable={purgeLogsUnavailable}
+          purgePostAllowed={isMetricsPurgePostAllowed()}
+        />
 
         <section className="rounded-2xl border border-neutral-200 bg-white/95 p-4 shadow-sm">
           <div className="mb-2 flex items-center justify-between gap-3">
