@@ -62,6 +62,16 @@ type LeadFunnelRow = {
   offer_decision_path: string | null;
 };
 type LeadCountRow = { total: number };
+/** Agregados globais de leads (não paginados), alinhados à vista «Leads» do construtor. */
+type LeadMetricsAggRow = {
+  visitantes: number;
+  leads_total: number;
+  leads_quiz_started: number;
+  leads_qualificados: number;
+  leads_quiz_completed: number;
+  leads_checkout: number;
+  leads_payment: number;
+};
 type StepDataHealthRow = {
   step_events: number;
   answered_events: number;
@@ -365,8 +375,20 @@ export default async function QuizDashboardPage({
     Prisma.sql`COALESCE(metadata_json->>'traffic_type', '') <> 'internal_test'`,
   ];
   const whereSqlMetrics = Prisma.sql`WHERE ${Prisma.join(wherePartsMetrics, " AND ")}`;
+  const minStepsQualificado = Math.max(1, Math.ceil(QUIZ_STEP_COLUMNS.length * 0.5));
 
-  const [totalsRows, dailyAggRows, funnelStepRows, stageRows, funnelOptionsRows, sourceOptionsRows, leadFunnelRows, leadCountRows, stepDataHealthRows] = await Promise.all([
+  const [
+    totalsRows,
+    dailyAggRows,
+    funnelStepRows,
+    stageRows,
+    funnelOptionsRows,
+    sourceOptionsRows,
+    leadFunnelRows,
+    leadCountRows,
+    stepDataHealthRows,
+    leadMetricsRows,
+  ] = await Promise.all([
     prisma.$queryRaw<TotalsRow[]>(Prisma.sql`
       SELECT
         COUNT(*) FILTER (WHERE event_name IN ('page_view', 'landing_view'))::int AS visits,
@@ -569,6 +591,41 @@ export default async function QuizDashboardPage({
       FROM events
       ${whereSqlMetrics}
     `),
+    prisma.$queryRaw<LeadMetricsAggRow[]>(Prisma.sql`
+      WITH scoped AS (
+        SELECT *,
+          COALESCE(lead_id, session_id, anonymous_id, visitor_id) AS lead_key
+        FROM events
+        ${whereSqlMetrics}
+      ),
+      visitantes AS (
+        SELECT COUNT(DISTINCT COALESCE(session_id, anonymous_id, visitor_id))::int AS c
+        FROM scoped
+        WHERE event_name IN ('page_view', 'landing_view')
+      ),
+      lead_rollup AS (
+        SELECT
+          lead_key,
+          BOOL_OR(event_name = 'quiz_started') AS quiz_started,
+          BOOL_OR(event_name = 'quiz_completed') AS quiz_completed,
+          BOOL_OR(event_name = 'checkout_started') AS checkout_started,
+          BOOL_OR(event_name = 'payment_success') AS payment_success,
+          BOOL_OR(COALESCE(metadata_json->>'traffic_type', '') = 'internal_test') AS is_internal_test,
+          COUNT(DISTINCT CASE WHEN event_name = 'step_answered' AND step_id IS NOT NULL THEN step_id END)::int AS steps_answered
+        FROM scoped
+        WHERE lead_key IS NOT NULL
+        GROUP BY lead_key
+      )
+      SELECT
+        (SELECT c FROM visitantes) AS visitantes,
+        COUNT(*) FILTER (WHERE NOT is_internal_test)::int AS leads_total,
+        COUNT(*) FILTER (WHERE NOT is_internal_test AND quiz_started)::int AS leads_quiz_started,
+        COUNT(*) FILTER (WHERE NOT is_internal_test AND quiz_started AND steps_answered >= ${minStepsQualificado})::int AS leads_qualificados,
+        COUNT(*) FILTER (WHERE NOT is_internal_test AND quiz_completed)::int AS leads_quiz_completed,
+        COUNT(*) FILTER (WHERE NOT is_internal_test AND checkout_started)::int AS leads_checkout,
+        COUNT(*) FILTER (WHERE NOT is_internal_test AND payment_success)::int AS leads_payment
+      FROM lead_rollup
+    `),
   ]);
 
   const totals = totalsRows[0] ?? {
@@ -582,6 +639,27 @@ export default async function QuizDashboardPage({
 
   const revenue = Number(totals.revenue ?? 0);
   const conversionRate = Number(totals.conversion_rate ?? 0);
+
+  const leadAgg = leadMetricsRows[0] ?? {
+    visitantes: 0,
+    leads_total: 0,
+    leads_quiz_started: 0,
+    leads_qualificados: 0,
+    leads_quiz_completed: 0,
+    leads_checkout: 0,
+    leads_payment: 0,
+  };
+  const leadVisitantes = Number(leadAgg.visitantes ?? 0);
+  const leadsAdquiridos = Number(leadAgg.leads_quiz_started ?? 0);
+  const leadQualificados = Number(leadAgg.leads_qualificados ?? 0);
+  const leadQuizCompleted = Number(leadAgg.leads_quiz_completed ?? 0);
+  const leadCheckout = Number(leadAgg.leads_checkout ?? 0);
+  const leadPayment = Number(leadAgg.leads_payment ?? 0);
+  const taxaInteracaoPct = leadVisitantes === 0 ? 0 : (leadsAdquiridos / leadVisitantes) * 100;
+  const pctAdquiridosComCheckout = leadsAdquiridos === 0 ? 0 : (leadCheckout / leadsAdquiridos) * 100;
+  const retencaoQuizCompletoPct = leadsAdquiridos === 0 ? 0 : (leadQuizCompleted / leadsAdquiridos) * 100;
+  const conversaoCheckoutPct = leadCheckout === 0 ? 0 : (leadPayment / leadCheckout) * 100;
+  const pctQualificadosSobreAdquiridos = leadsAdquiridos === 0 ? 0 : (leadQualificados / leadsAdquiridos) * 100;
 
   const stageMap = new Map(stageRows.map((row) => [row.stage, Number(row.sessions ?? 0)]));
   const funnelStages = [
@@ -689,6 +767,14 @@ export default async function QuizDashboardPage({
       fromPreviousRate: prevReached === 0 ? 0 : (reached / prevReached) * 100,
     };
   });
+
+  const funnelStagePtLabels: Record<string, string> = {
+    traffic: "Tráfego",
+    quiz_started: "Início do quiz",
+    quiz_completed: "Quiz completo",
+    checkout_started: "Checkout",
+    payment_success: "Compra",
+  };
 
   return (
     <main className="min-h-dvh bg-gradient-to-b from-emerald-50/50 via-white to-neutral-50 px-4 py-8 sm:px-6">
@@ -830,6 +916,166 @@ export default async function QuizDashboardPage({
             </div>
             </form>
           </details>
+        </section>
+
+        <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+          <div className="mb-4 border-b border-neutral-100 pb-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Vista leads</p>
+            <h2 className="text-lg font-semibold text-pg-ink">Métricas do funil (organização tipo construtor)</h2>
+            <p className="mt-1 text-xs text-pg-ink/65">
+              Agregados globais com os filtros actuais. Tráfego de teste interno excluído. Qualificados: leads que
+              responderam ≥ {minStepsQualificado} etapas (≥ metade de {QUIZ_STEP_COLUMNS.length} passos do quiz).
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="flex items-start gap-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
+              <span className="text-xl text-neutral-400" aria-hidden>
+                ◉
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-pg-ink">Visitantes</p>
+                <p className="text-xs text-pg-ink/65">Sessões que viram página / entrada do funil.</p>
+              </div>
+              <p className="text-2xl font-bold tabular-nums text-pg-ink">{fmt(leadVisitantes)}</p>
+            </div>
+            <div className="flex items-start gap-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
+              <span className="text-xl text-neutral-400" aria-hidden>
+                ◎
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-pg-ink">Leads adquiridos</p>
+                <p className="text-xs text-pg-ink/65">Iniciaram o quiz (evento quiz_started).</p>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold tabular-nums text-pg-ink">{fmt(leadsAdquiridos)}</p>
+                <p className="mt-1 text-xs font-semibold text-emerald-700">
+                  {pctAdquiridosComCheckout.toFixed(1)}% chegam ao checkout
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
+              <span className="text-lg font-semibold text-neutral-400" aria-hidden>
+                ↗
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-pg-ink">Taxa de interação</p>
+                <p className="text-xs text-pg-ink/65">Visitantes que viraram lead (iniciaram quiz).</p>
+              </div>
+              <p className="text-2xl font-bold tabular-nums text-pg-ink">{taxaInteracaoPct.toFixed(1)}%</p>
+            </div>
+            <div className="flex items-start gap-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
+              <span className="text-xl text-neutral-400" aria-hidden>
+                ✓
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-pg-ink">Leads qualificados</p>
+                <p className="text-xs text-pg-ink/65">Responderam a pelo menos metade das etapas do quiz.</p>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold tabular-nums text-pg-ink">{fmt(leadQualificados)}</p>
+                <p className="mt-1 text-xs text-pg-ink/60">{pctQualificadosSobreAdquiridos.toFixed(1)}% dos adquiridos</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
+              <span className="text-xl text-neutral-400" aria-hidden>
+                ☑
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-pg-ink">Fluxos completos (quiz)</p>
+                <p className="text-xs text-pg-ink/65">Concluíram o quiz (evento quiz_completed).</p>
+              </div>
+              <p className="text-2xl font-bold tabular-nums text-pg-ink">{fmt(leadQuizCompleted)}</p>
+            </div>
+          </div>
+
+          <div className="mt-6 overflow-x-auto rounded-xl border border-neutral-200">
+            <table className="min-w-full text-left text-sm">
+              <caption className="border-b border-neutral-100 bg-neutral-50 px-3 py-2 text-left text-xs font-semibold text-pg-ink/80">
+                Indicadores calculados automaticamente (mesmos filtros)
+              </caption>
+              <thead className="border-b border-neutral-200 bg-neutral-50/80 text-xs font-semibold text-pg-ink/70">
+                <tr>
+                  <th className="px-3 py-2">Indicador</th>
+                  <th className="px-3 py-2">Valor</th>
+                  <th className="px-3 py-2">Nota</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                <tr>
+                  <td className="px-3 py-2 font-medium text-pg-ink">Taxa de interação</td>
+                  <td className="px-3 py-2 tabular-nums">{taxaInteracaoPct.toFixed(2)}%</td>
+                  <td className="px-3 py-2 text-xs text-pg-ink/70">Leads adquiridos ÷ visitantes</td>
+                </tr>
+                <tr>
+                  <td className="px-3 py-2 font-medium text-pg-ink">Retenção (quiz iniciado → quiz completo)</td>
+                  <td className="px-3 py-2 tabular-nums">{retencaoQuizCompletoPct.toFixed(2)}%</td>
+                  <td className="px-3 py-2 text-xs text-pg-ink/70">Entre leads com quiz_started</td>
+                </tr>
+                <tr>
+                  <td className="px-3 py-2 font-medium text-pg-ink">Passam para o checkout</td>
+                  <td className="px-3 py-2 tabular-nums">
+                    {fmt(leadCheckout)}{" "}
+                    <span className="text-xs text-pg-ink/65">
+                      ({pctAdquiridosComCheckout.toFixed(1)}% dos adquiridos)
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-xs text-pg-ink/70">Leads com checkout_started</td>
+                </tr>
+                <tr>
+                  <td className="px-3 py-2 font-medium text-pg-ink">Conversão checkout</td>
+                  <td className="px-3 py-2 tabular-nums">{conversaoCheckoutPct.toFixed(2)}%</td>
+                  <td className="px-3 py-2 text-xs text-pg-ink/70">Compras (payment_success) ÷ iniciaram checkout</td>
+                </tr>
+                <tr>
+                  <td className="px-3 py-2 font-medium text-pg-ink">Compras confirmadas</td>
+                  <td className="px-3 py-2 tabular-nums">{fmt(leadPayment)}</td>
+                  <td className="px-3 py-2 text-xs text-pg-ink/70">Leads com pagamento concluído</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold text-pg-ink">Perda entre etapas (sessões · funil principal)</h3>
+            <p className="mt-1 text-xs text-pg-ink/65">
+              Percentagem deixada de avançar em relação à etapa anterior (mesma base que «Funil principal» abaixo).
+            </p>
+            <div className="mt-2 overflow-x-auto rounded-xl border border-neutral-200">
+              <table className="min-w-full text-left text-sm">
+                <thead className="border-b border-neutral-200 bg-neutral-50 text-xs font-semibold text-pg-ink/70">
+                  <tr>
+                    <th className="px-3 py-2">Etapa</th>
+                    <th className="px-3 py-2">Sessões</th>
+                    <th className="px-3 py-2">Retenção vs anterior</th>
+                    <th className="px-3 py-2">Perda vs anterior</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {funnelStages.map((stage, idx) => {
+                    const prev = idx === 0 ? stage.sessions : funnelStages[idx - 1]!.sessions;
+                    const rate = prev === 0 ? 0 : (stage.sessions / prev) * 100;
+                    const loss = prev === 0 ? 0 : Math.max(0, 100 - rate);
+                    return (
+                      <tr key={stage.key}>
+                        <td className="px-3 py-2 font-medium text-pg-ink">
+                          {funnelStagePtLabels[stage.key] ?? stage.label}
+                        </td>
+                        <td className="px-3 py-2 tabular-nums">{fmt(stage.sessions)}</td>
+                        <td className="px-3 py-2 tabular-nums text-emerald-800">{rate.toFixed(2)}%</td>
+                        <td className="px-3 py-2 tabular-nums text-rose-700">{loss.toFixed(2)}%</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <p className="mt-4 rounded-lg border border-sky-100 bg-sky-50/60 px-3 py-2 text-xs text-pg-ink/80">
+            <span className="font-semibold text-pg-ink">Comportamento do lead no funil:</span> não há gravação de
+            ecrã. Usa a tabela «Progresso por lead» mais abaixo para ver passos, ofertas e checkout por identificador.
+          </p>
         </section>
 
         <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
