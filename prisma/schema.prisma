@@ -219,6 +219,8 @@ model MetricsPurgeLog {
   scope           String   @db.VarChar(32)
   eventsRemoved   Int      @map("events_removed")
   summaryBefore   Json     @map("summary_before")
+  /// Nome opcional (ex.: «Antes da mudança X no funil») para encontrar o reset mais tarde.
+  label           String?  @db.VarChar(200)
 
   createdBy User @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
 

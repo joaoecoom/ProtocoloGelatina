@@ -706,6 +706,7 @@ export default async function QuizDashboardPage({
         scope: true,
         eventsRemoved: true,
         summaryBefore: true,
+        label: true,
       },
     });
     purgeLogs = rows.map((r) => ({
@@ -715,6 +716,10 @@ export default async function QuizDashboardPage({
   } catch {
     purgeLogsUnavailable = true;
   }
+
+  const highlightResetIdRaw = sp.get("reset")?.trim();
+  const highlightResetId =
+    highlightResetIdRaw && highlightResetIdRaw.length <= 40 ? highlightResetIdRaw : undefined;
 
   const offerDecisionRollup = new Map<string, { accepted: number; rejected: number }>();
   for (const row of leadFunnelRows) {
@@ -793,6 +798,7 @@ export default async function QuizDashboardPage({
           exportHref={`/api/events/export?${exportParams.toString()}`}
           tableUnavailable={purgeLogsUnavailable}
           purgePostAllowed={isMetricsPurgePostAllowed()}
+          highlightResetId={highlightResetId}
         />
 
         <section className="rounded-2xl border border-neutral-200 bg-white/95 p-4 shadow-sm">

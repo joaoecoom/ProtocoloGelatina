@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export type MetricsPurgeLogDTO = {
   id: string;
@@ -10,6 +11,7 @@ export type MetricsPurgeLogDTO = {
   scope: string;
   eventsRemoved: number;
   summaryBefore: unknown;
+  label?: string | null;
 };
 
 const SCOPE_LABEL: Record<string, string> = {
@@ -60,19 +62,33 @@ export function MetricsPurgePanel(props: {
   tableUnavailable?: boolean;
   /** Se false, o servidor recusa POST; o botão fica desactivado. */
   purgePostAllowed?: boolean;
+  /** Abre e destaca uma linha do histórico (query `?reset=id`). */
+  highlightResetId?: string;
 }) {
   const canPurge = props.purgePostAllowed !== false;
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [dangerAll, setDangerAll] = useState(false);
+  const [resetName, setResetName] = useState("");
   const [phrase, setPhrase] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const confirmExpected = dangerAll ? "ELIMINAR TUDO" : "ELIMINAR";
 
   const sortedLogs = useMemo(() => [...props.initialLogs].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [props.initialLogs]);
+
+  useEffect(() => {
+    const id = props.highlightResetId?.trim();
+    if (!id || sortedLogs.length === 0) return;
+    if (!sortedLogs.some((l) => l.id === id)) return;
+    setExpanded((m) => ({ ...m, [id]: true }));
+    requestAnimationFrame(() => {
+      document.getElementById(`purge-log-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [props.highlightResetId, sortedLogs]);
 
   async function submitPurge() {
     setMessage(null);
@@ -89,9 +105,10 @@ export function MetricsPurgePanel(props: {
         body: JSON.stringify({
           scope: dangerAll ? "all" : "quiz_gelatina",
           confirmPhrase: phrase,
+          label: resetName.trim() || undefined,
         }),
       });
-      const data = (await res.json()) as { ok?: boolean; removed?: number; error?: string };
+      const data = (await res.json()) as { ok?: boolean; removed?: number; logId?: string; error?: string };
       if (!res.ok) {
         setMessage({ kind: "err", text: data.error ?? "Pedido falhou." });
         return;
@@ -99,8 +116,13 @@ export function MetricsPurgePanel(props: {
       setMessage({ kind: "ok", text: `Eliminados ${data.removed ?? 0} eventos. A página vai actualizar.` });
       setOpen(false);
       setPhrase("");
+      setResetName("");
       setDangerAll(false);
-      router.refresh();
+      if (data.logId) {
+        router.push(`/quizdashboard?reset=${encodeURIComponent(data.logId)}`);
+      } else {
+        router.refresh();
+      }
     } catch {
       setMessage({ kind: "err", text: "Erro de rede." });
     } finally {
@@ -125,8 +147,10 @@ export function MetricsPurgePanel(props: {
           </p>
           {props.tableUnavailable ? (
             <p className="mt-2 text-xs font-semibold text-rose-700">
-              Tabela de histórico ainda não disponível — corre a migração Prisma (<code className="rounded bg-white/80 px-1">metrics_purge_logs</code>
-              ).
+              A base de dados ainda não tem a tabela de histórico. No Supabase → SQL Editor, executa o SQL em{" "}
+              <code className="rounded bg-white/80 px-1">prisma/migrations/20260505130000_add_metrics_purge_logs/migration.sql</code>{" "}
+              (e depois <code className="rounded bg-white/80 px-1">20260505240000_metrics_purge_log_label/migration.sql</code> se já tinhas a
+              tabela). Sem isto não guardamos resets nem nomes.
             </p>
           ) : null}
           {!canPurge ? (
@@ -154,27 +178,63 @@ export function MetricsPurgePanel(props: {
       {sortedLogs.length > 0 ? (
         <div className="mt-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-pg-ink/60">Histórico de resets</p>
+          <p className="mt-1 text-xs text-pg-ink/60">
+            Usa «Abrir» ou «Copiar link» para voltar a este snapshot mais tarde (<code className="rounded bg-neutral-100 px-1">?reset=id</code>
+            ).
+          </p>
           <div className="mt-2 overflow-x-auto rounded-xl border border-neutral-200 bg-white">
             <table className="min-w-full text-left text-sm">
               <thead className="border-b border-neutral-200 bg-neutral-50 text-xs font-semibold text-pg-ink/70">
                 <tr>
+                  <th className="px-3 py-2">Nome</th>
                   <th className="px-3 py-2">Quando</th>
                   <th className="px-3 py-2">Ambito</th>
                   <th className="px-3 py-2">Eventos</th>
                   <th className="px-3 py-2">Por</th>
+                  <th className="px-3 py-2">Abrir</th>
                   <th className="px-3 py-2">Resumo antes</th>
                 </tr>
               </thead>
               <tbody>
                 {sortedLogs.map((log) => {
                   const teaser = snapshotTeaser(log.summaryBefore);
+                  const isHighlight = props.highlightResetId === log.id;
                   return (
-                  <tr key={log.id} className="border-b border-neutral-100 last:border-0">
+                  <tr
+                    key={log.id}
+                    id={`purge-log-${log.id}`}
+                    className={`border-b border-neutral-100 last:border-0 ${isHighlight ? "bg-emerald-50/80" : ""}`}
+                  >
+                    <td className="max-w-[10rem] px-3 py-2 text-xs font-medium text-pg-ink">
+                      {log.label?.trim() ? log.label : <span className="text-pg-ink/45">—</span>}
+                    </td>
                     <td className="whitespace-nowrap px-3 py-2 text-xs text-pg-ink/80">{formatLisbon(log.createdAt)}</td>
                     <td className="px-3 py-2 text-xs">{SCOPE_LABEL[log.scope] ?? log.scope}</td>
                     <td className="px-3 py-2 font-mono text-xs">{log.eventsRemoved}</td>
                     <td className="max-w-[12rem] truncate px-3 py-2 text-xs text-pg-ink/75" title={log.createdByEmail}>
                       {log.createdByEmail}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 align-top">
+                      <div className="flex flex-col gap-1">
+                        <Link
+                          href={`/quizdashboard?reset=${encodeURIComponent(log.id)}`}
+                          className="text-xs font-semibold text-emerald-800 underline underline-offset-2"
+                        >
+                          Abrir
+                        </Link>
+                        <button
+                          type="button"
+                          className="text-left text-xs font-semibold text-pg-ink/70 underline underline-offset-2 hover:text-pg-ink"
+                          onClick={async () => {
+                            const url = `${window.location.origin}/quizdashboard?reset=${encodeURIComponent(log.id)}`;
+                            await navigator.clipboard.writeText(url);
+                            setCopiedId(log.id);
+                            window.setTimeout(() => setCopiedId((id) => (id === log.id ? null : id)), 2000);
+                          }}
+                        >
+                          {copiedId === log.id ? "Copiado" : "Copiar link"}
+                        </button>
+                      </div>
                     </td>
                     <td className="max-w-md px-3 py-2 align-top">
                       {teaser ? (
@@ -200,7 +260,7 @@ export function MetricsPurgePanel(props: {
             </table>
           </div>
         </div>
-      ) : (
+      ) : props.tableUnavailable ? null : (
         <p className="mt-3 text-sm text-pg-ink/60">Ainda não houve resets registados.</p>
       )}
 
@@ -234,6 +294,17 @@ export function MetricsPurgePanel(props: {
               <span>Modo perigoso: apagar todos os eventos (não só o quiz)</span>
             </label>
             <label className="mt-4 block text-sm font-semibold text-pg-ink">
+              Nome deste reset <span className="font-normal text-pg-ink/60">(opcional)</span>
+              <input
+                type="text"
+                value={resetName}
+                onChange={(e) => setResetName(e.target.value)}
+                maxLength={200}
+                placeholder='Ex.: Antes de mudar passos do quiz — Jan 2026'
+                className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+              />
+            </label>
+            <label className="mt-4 block text-sm font-semibold text-pg-ink">
               Escreve <span className="font-mono text-rose-700">{confirmExpected}</span>
               <input
                 type="text"
@@ -250,6 +321,7 @@ export function MetricsPurgePanel(props: {
                 onClick={() => {
                   setOpen(false);
                   setPhrase("");
+                  setResetName("");
                   setDangerAll(false);
                 }}
                 className="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-pg-ink hover:bg-neutral-50"

@@ -11,6 +11,13 @@ const DASHBOARD_ACCESS_COOKIE = "quizdashboard_access";
 
 type Scope = "quiz_gelatina" | "all";
 
+function sanitizeResetLabel(raw: unknown): string | null {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  return s.length > 200 ? s.slice(0, 200) : s;
+}
+
 async function requireQuizDashboardAccess(): Promise<
   | { user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>> }
   | { error: NextResponse }
@@ -44,6 +51,7 @@ export async function GET() {
         scope: true,
         eventsRemoved: true,
         summaryBefore: true,
+        label: true,
       },
     });
     return NextResponse.json({
@@ -72,15 +80,16 @@ export async function POST(request: Request) {
     );
   }
 
-  let body: { scope?: Scope; confirmPhrase?: string };
+  let body: { scope?: Scope; confirmPhrase?: string; label?: unknown };
   try {
-    body = (await request.json()) as { scope?: Scope; confirmPhrase?: string };
+    body = (await request.json()) as { scope?: Scope; confirmPhrase?: string; label?: unknown };
   } catch {
     return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
   }
 
   const scope = body.scope === "all" ? "all" : "quiz_gelatina";
   const phrase = String(body.confirmPhrase ?? "").trim();
+  const label = sanitizeResetLabel(body.label);
 
   if (scope === "quiz_gelatina" && phrase !== "ELIMINAR") {
     return NextResponse.json({ error: 'Escreve exactamente "ELIMINAR" para confirmar.' }, { status: 400 });
@@ -103,6 +112,7 @@ export async function POST(request: Request) {
           scope,
           eventsRemoved: removed,
           summaryBefore: summaryBefore as unknown as Prisma.InputJsonValue,
+          ...(label ? { label } : {}),
         },
       });
 
@@ -117,6 +127,7 @@ export async function POST(request: Request) {
       ok: true,
       logId: result.logId,
       removed: result.removed,
+      label: label ?? null,
     });
   } catch (e) {
     console.error("[metrics/purge]", e);
