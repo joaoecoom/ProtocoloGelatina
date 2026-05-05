@@ -924,13 +924,22 @@ export default function QuizOfferView() {
 
   function goToFinalSalesStep() {
     setCheckoutError(null);
-    void track({
+    const sentWithBeacon = trackWithBeacon({
       event_name: "result_cta_clicked",
       funnel_id: "quiz_gelatina",
       step_id: currentStepId,
       page_type: "quiz",
       metadata_json: { cta: "go_to_final_sales" },
     });
+    if (!sentWithBeacon) {
+      void track({
+        event_name: "result_cta_clicked",
+        funnel_id: "quiz_gelatina",
+        step_id: currentStepId,
+        page_type: "quiz",
+        metadata_json: { cta: "go_to_final_sales" },
+      });
+    }
     setShowFinalSalesStep(true);
   }
 
@@ -978,13 +987,22 @@ export default function QuizOfferView() {
     if (isStartingCheckout) return;
     setIsStartingCheckout(true);
     setCheckoutError(null);
-    void track({
+    const sentWithBeacon = trackWithBeacon({
       event_name: "checkout_started",
       funnel_id: "quiz_gelatina",
       step_id: currentStepId,
       page_type: "quiz",
       metadata_json: { plan: "FRONT", source: "quiz_offer_cta" },
     });
+    if (!sentWithBeacon) {
+      void track({
+        event_name: "checkout_started",
+        funnel_id: "quiz_gelatina",
+        step_id: currentStepId,
+        page_type: "quiz",
+        metadata_json: { plan: "FRONT", source: "quiz_offer_cta" },
+      });
+    }
     const trackingContext = getTrackingContext();
     try {
       // Pre-aquece o clientSecret antes de navegar para reduzir latência percebida.

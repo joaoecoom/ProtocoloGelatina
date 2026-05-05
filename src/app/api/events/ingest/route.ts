@@ -34,6 +34,21 @@ function isSchemaError(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2021" || error.code === "P2022");
 }
 
+function getInternalTestIps() {
+  return (process.env.TRACKING_INTERNAL_TEST_IPS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function hasInternalTestCookie(cookieHeader: string | null) {
+  if (!cookieHeader) return false;
+  return cookieHeader
+    .split(";")
+    .map((p) => p.trim())
+    .some((entry) => entry === "pg_internal_tester=1");
+}
+
 export async function POST(request: Request) {
   const json = await request.json().catch(() => null);
   if (!json) return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
@@ -54,6 +69,10 @@ export async function POST(request: Request) {
   const forwardedFor = hdrs.get("x-forwarded-for");
   const country = hdrs.get("x-vercel-ip-country") ?? hdrs.get("cf-ipcountry");
   const ip = forwardedFor?.split(",")[0]?.trim();
+  const internalIps = getInternalTestIps();
+  const isInternalByIp = Boolean(ip && internalIps.includes(ip));
+  const isInternalByCookie = hasInternalTestCookie(hdrs.get("cookie"));
+  const isInternalTestRequest = isInternalByIp || isInternalByCookie;
   const tech = parseBrowserContext(userAgent);
 
   try {
@@ -89,7 +108,15 @@ export async function POST(request: Request) {
       currency: event.currency ?? null,
       schemaName: event.schema_name,
       schemaVersion: event.schema_version,
-      metadataJson: (event.metadata_json ?? {}) as Prisma.InputJsonValue,
+      metadataJson: {
+        ...((event.metadata_json ?? {}) as Record<string, unknown>),
+        ...(isInternalTestRequest
+          ? {
+              internal_test: true,
+              traffic_type: "internal_test",
+            }
+          : {}),
+      } as Prisma.InputJsonValue,
     }));
 
     const result = await prisma.event.createMany({

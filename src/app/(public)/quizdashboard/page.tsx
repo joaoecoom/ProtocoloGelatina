@@ -54,6 +54,7 @@ type LeadFunnelRow = {
   result_cta_clicked: boolean;
   checkout_started: boolean;
   payment_success: boolean;
+  is_internal_test: boolean;
   step_answers: Record<string, string> | null;
   offer_decisions: Record<string, string> | null;
   offer_decision_path: string | null;
@@ -62,6 +63,12 @@ type LeadCountRow = { total: number };
 type StepDataHealthRow = {
   step_events: number;
   answered_events: number;
+};
+type LeadProgressRow = {
+  row: LeadFunnelRow;
+  stepAnswers: Record<string, string>;
+  offerDecisions: Record<string, string>;
+  maxReachedOrder: number;
 };
 
 const RANGE_TO_DAYS: Record<string, number> = {
@@ -199,6 +206,29 @@ function getLeadExitStepId(stepAnswers: Record<string, string>, hasPurchase: boo
   return reachedSteps[reachedSteps.length - 1] ?? null;
 }
 
+function getLeadMaxReachedOrder(params: {
+  stepAnswers: Record<string, string>;
+  quizStarted: boolean;
+  resultCtaClicked: boolean;
+  checkoutStarted: boolean;
+  paymentSuccess: boolean;
+}) {
+  const { stepAnswers, quizStarted, resultCtaClicked, checkoutStarted, paymentSuccess } = params;
+  let maxOrder = -1;
+
+  for (const stepId of Object.keys(stepAnswers)) {
+    if (!stepAnswers[stepId]) continue;
+    maxOrder = Math.max(maxOrder, getStepOrder(stepId));
+  }
+
+  if (quizStarted) maxOrder = Math.max(maxOrder, getStepOrder("intro"));
+  if (resultCtaClicked) maxOrder = Math.max(maxOrder, getStepOrder("final-sales"));
+  if (checkoutStarted) maxOrder = Math.max(maxOrder, getStepOrder("checkout-front"));
+  if (paymentSuccess) maxOrder = Math.max(maxOrder, getStepOrder("checkout-thank-you"));
+
+  return maxOrder;
+}
+
 const CHECKOUT_OFFER_STEPS = [
   "checkout-upsell-1",
   "checkout-downsell-1-1",
@@ -328,6 +358,11 @@ export default async function QuizDashboardPage({
     );
   }
   const whereSql = whereParts.length > 0 ? Prisma.sql`WHERE ${Prisma.join(whereParts, " AND ")}` : Prisma.empty;
+  const wherePartsMetrics = [
+    ...whereParts,
+    Prisma.sql`COALESCE(metadata_json->>'traffic_type', '') <> 'internal_test'`,
+  ];
+  const whereSqlMetrics = Prisma.sql`WHERE ${Prisma.join(wherePartsMetrics, " AND ")}`;
 
   const [totalsRows, dailyAggRows, funnelStepRows, stageRows, funnelOptionsRows, sourceOptionsRows, leadFunnelRows, leadCountRows, stepDataHealthRows] = await Promise.all([
     prisma.$queryRaw<TotalsRow[]>(Prisma.sql`
@@ -346,13 +381,13 @@ export default async function QuizDashboardPage({
           )
         END AS conversion_rate
       FROM events
-      ${whereSql}
+      ${whereSqlMetrics}
     `),
     prisma.$queryRaw<DailyAggRow[]>(Prisma.sql`
       WITH scoped AS (
         SELECT *
         FROM events
-        ${whereSql}
+        ${whereSqlMetrics}
       )
       SELECT
         DATE("timestamp")::text AS date,
@@ -371,7 +406,7 @@ export default async function QuizDashboardPage({
       WITH scoped AS (
         SELECT *
         FROM events
-        ${whereSql}
+        ${whereSqlMetrics}
       )
       SELECT funnel_id, step_id, views, answers, completions, drop_rate
       FROM (
@@ -402,7 +437,7 @@ export default async function QuizDashboardPage({
       WITH scoped AS (
         SELECT COALESCE(session_id, anonymous_id, visitor_id) AS sid, event_name
         FROM events
-        ${whereSql}
+        ${whereSqlMetrics}
       )
       SELECT 'traffic' AS stage, COUNT(DISTINCT sid)::int AS sessions FROM scoped WHERE event_name IN ('page_view', 'landing_view')
       UNION ALL
@@ -489,7 +524,8 @@ export default async function QuizDashboardPage({
           BOOL_OR(event_name = 'quiz_started') AS quiz_started,
           BOOL_OR(event_name = 'result_cta_clicked') AS result_cta_clicked,
           BOOL_OR(event_name = 'checkout_started') AS checkout_started,
-          BOOL_OR(event_name = 'payment_success') AS payment_success
+          BOOL_OR(event_name = 'payment_success') AS payment_success,
+          BOOL_OR(COALESCE(metadata_json->>'traffic_type', '') = 'internal_test') AS is_internal_test
         FROM scoped
         WHERE lead_key IS NOT NULL
         GROUP BY lead_key
@@ -502,6 +538,7 @@ export default async function QuizDashboardPage({
         lr.result_cta_clicked,
         lr.checkout_started,
         lr.payment_success,
+        lr.is_internal_test,
         sm.step_answers,
         dm.offer_decisions,
         dp.offer_decision_path
@@ -528,7 +565,7 @@ export default async function QuizDashboardPage({
         COUNT(*) FILTER (WHERE event_name = 'step_viewed')::int AS step_events,
         COUNT(*) FILTER (WHERE event_name = 'step_answered')::int AS answered_events
       FROM events
-      ${whereSql}
+      ${whereSqlMetrics}
     `),
   ]);
 
@@ -600,6 +637,33 @@ export default async function QuizDashboardPage({
   const topRejection = Array.from(offerDecisionRollup.entries())
     .map(([stage, totals]) => ({ stage, rejected: totals.rejected }))
     .sort((a, b) => b.rejected - a.rejected)[0] ?? { stage: "-", rejected: 0 };
+  const internalTestLeads = leadFunnelRows.filter((row) => row.is_internal_test).length;
+  const leadProgressRows: LeadProgressRow[] = leadFunnelRows.map((row) => {
+    const stepAnswers = row.step_answers ?? {};
+    return {
+      row,
+      stepAnswers,
+      offerDecisions: row.offer_decisions ?? {},
+      maxReachedOrder: getLeadMaxReachedOrder({
+        stepAnswers,
+        quizStarted: row.quiz_started,
+        resultCtaClicked: row.result_cta_clicked,
+        checkoutStarted: row.checkout_started,
+        paymentSuccess: row.payment_success,
+      }),
+    };
+  });
+  const baselineLeads = leadProgressRows.filter((r) => r.maxReachedOrder >= 0).length;
+  const stepPassageRates = QUIZ_STEP_COLUMNS.map((stepId, idx) => {
+    const reached = leadProgressRows.filter((r) => r.maxReachedOrder >= idx).length;
+    const prevReached = idx === 0 ? baselineLeads : leadProgressRows.filter((r) => r.maxReachedOrder >= idx - 1).length;
+    return {
+      stepId,
+      reached,
+      fromStartRate: baselineLeads === 0 ? 0 : (reached / baselineLeads) * 100,
+      fromPreviousRate: prevReached === 0 ? 0 : (reached / prevReached) * 100,
+    };
+  });
 
   return (
     <main className="min-h-dvh bg-gradient-to-b from-emerald-50/50 via-white to-neutral-50 px-4 py-8 sm:px-6">
@@ -608,6 +672,9 @@ export default async function QuizDashboardPage({
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Tracking dashboard</p>
           <h1 className="mt-2 text-3xl font-bold text-pg-ink">Funil e receita (event-driven)</h1>
           <p className="mt-1 text-sm text-pg-ink/70">Visão agregada por eventos, pronta para ligar pixels/APIs externas.</p>
+          <p className="mt-1 text-xs font-semibold text-sky-700">
+            Tráfego de teste interno está excluído dos cards/métricas. Na tabela por lead, aparece em azul claro.
+          </p>
         </header>
 
         <section className="rounded-2xl border border-neutral-200 bg-white/95 p-4 shadow-sm">
@@ -848,9 +915,39 @@ export default async function QuizDashboardPage({
         </section>
 
         <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+          <h2 className="text-lg font-semibold text-pg-ink">Taxa de passagem por etapa (início ao fim)</h2>
+          <p className="mt-1 text-xs text-pg-ink/65">
+            Cálculo cumulativo: se 5 entraram e 4 chegaram à etapa seguinte, a passagem é 80%.
+          </p>
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-[980px] border-collapse text-sm">
+              <thead>
+                <tr className="bg-emerald-50/70">
+                  <th className="border border-neutral-200 px-2 py-2 text-left font-semibold">Etapa</th>
+                  <th className="border border-neutral-200 px-2 py-2 text-left font-semibold">Leads que chegaram</th>
+                  <th className="border border-neutral-200 px-2 py-2 text-left font-semibold">% desde o início</th>
+                  <th className="border border-neutral-200 px-2 py-2 text-left font-semibold">% vs etapa anterior</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stepPassageRates.map((step) => (
+                  <tr key={step.stepId} className="odd:bg-white even:bg-emerald-50/20">
+                    <td className="border border-neutral-200 px-2 py-2 text-pg-ink">{getStepLabelWithNumber(step.stepId)}</td>
+                    <td className="border border-neutral-200 px-2 py-2 text-pg-ink">{fmt(step.reached)}</td>
+                    <td className="border border-neutral-200 px-2 py-2 text-pg-ink">{step.fromStartRate.toFixed(2)}%</td>
+                    <td className="border border-neutral-200 px-2 py-2 text-pg-ink">{step.fromPreviousRate.toFixed(2)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
           <h2 className="text-lg font-semibold text-pg-ink">Tabela por lead (todas as etapas do funil)</h2>
           <p className="mt-1 text-xs text-pg-ink/65">
-            Mostra cada lead/sessão e o estado em cada etapa. Filtros acima aplicam em toda a tabela.
+            Mostra cada lead/sessão e o estado em cada etapa. Se faltar um evento intermédio, a tabela infere "passou*"
+            quando já existe evento numa etapa posterior.
           </p>
           {Number(stepDataHealth.step_events ?? 0) === 0 ? (
             <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -890,12 +987,17 @@ export default async function QuizDashboardPage({
                     </td>
                   </tr>
                 ) : (
-                  leadFunnelRows.map((row) => {
-                    const stepAnswers = row.step_answers ?? {};
-                    const offerDecisions = row.offer_decisions ?? {};
+                  leadProgressRows.map(({ row, stepAnswers, offerDecisions, maxReachedOrder }) => {
                     const exitStepId = getLeadExitStepId(stepAnswers, row.payment_success);
                     return (
-                      <tr key={row.lead_key} className="odd:bg-white even:bg-emerald-50/20">
+                      <tr
+                        key={row.lead_key}
+                        className={
+                          row.is_internal_test
+                            ? "bg-sky-50"
+                            : "odd:bg-white even:bg-emerald-50/20"
+                        }
+                      >
                         <td className="border border-neutral-200 px-2 py-2 font-semibold text-pg-ink">{row.lead_display}</td>
                         <td className="border border-neutral-200 px-2 py-2 text-pg-ink/80">
                           {formatLisbonDateTime(row.first_seen)}
@@ -910,7 +1012,7 @@ export default async function QuizDashboardPage({
                                 : "border border-neutral-200 px-2 py-2 text-pg-ink/80"
                             }
                           >
-                            {stepAnswers[stepId] ?? "-"}
+                            {stepAnswers[stepId] ?? (getStepOrder(stepId) <= maxReachedOrder ? "passou*" : "-")}
                           </td>
                         ))}
                         <td className="border border-neutral-200 px-2 py-2">{statusBadge(row.result_cta_clicked, "clicked")}</td>
@@ -933,7 +1035,7 @@ export default async function QuizDashboardPage({
           </div>
           <div className="mt-3 flex items-center justify-between text-sm text-pg-ink/75">
             <p>
-              Leads: {fmt(totalLeads)} · Página {page} de {fmt(totalPages)}
+              Leads: {fmt(totalLeads)} · Teste interno: {fmt(internalTestLeads)} · Página {page} de {fmt(totalPages)}
             </p>
             <div className="flex items-center gap-2">
               <a
