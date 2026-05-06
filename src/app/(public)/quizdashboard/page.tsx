@@ -416,12 +416,12 @@ export default async function QuizDashboardPage({
         COUNT(*) FILTER (WHERE event_name IN ('page_view', 'landing_view'))::int AS visits,
         COUNT(DISTINCT COALESCE(session_id, anonymous_id, visitor_id))::int AS sessions,
         COUNT(DISTINCT COALESCE(lead_id, session_id, anonymous_id, visitor_id))::int AS leads,
-        COUNT(*) FILTER (WHERE event_name = 'payment_success')::int AS sales,
+        COUNT(*) FILTER (WHERE event_name = 'payment_success' AND COALESCE(revenue, 0) > 0)::int AS sales,
         COALESCE(SUM(revenue) FILTER (WHERE event_name = 'payment_success'), 0)::numeric(14,2) AS revenue,
         CASE
           WHEN COUNT(DISTINCT COALESCE(session_id, anonymous_id, visitor_id)) = 0 THEN 0
           ELSE ROUND(
-            (COUNT(*) FILTER (WHERE event_name = 'payment_success')::numeric
+            (COUNT(*) FILTER (WHERE event_name = 'payment_success' AND COALESCE(revenue, 0) > 0)::numeric
             / COUNT(DISTINCT COALESCE(session_id, anonymous_id, visitor_id))::numeric) * 100,
             2
           )
@@ -493,7 +493,7 @@ export default async function QuizDashboardPage({
       UNION ALL
       SELECT 'checkout_started' AS stage, COUNT(DISTINCT sid)::int AS sessions FROM scoped WHERE event_name = 'checkout_started'
       UNION ALL
-      SELECT 'payment_success' AS stage, COUNT(DISTINCT sid)::int AS sessions FROM scoped WHERE event_name = 'payment_success'
+      SELECT 'payment_success' AS stage, COUNT(DISTINCT sid)::int AS sessions FROM scoped WHERE event_name = 'payment_success' AND COALESCE(revenue, 0) > 0
     `),
     prisma.$queryRaw<OptionRow[]>`
       SELECT DISTINCT COALESCE(funnel_id, 'unknown') AS value
@@ -610,7 +610,7 @@ export default async function QuizDashboardPage({
           BOOL_OR(event_name = 'quiz_started') AS quiz_started,
           BOOL_OR(event_name = 'result_cta_clicked') AS result_cta_clicked,
           BOOL_OR(event_name = 'checkout_started') AS checkout_started,
-          BOOL_OR(event_name = 'payment_success') AS payment_success,
+          BOOL_OR(event_name = 'payment_success' AND COALESCE(revenue, 0) > 0) AS payment_success,
           BOOL_OR(COALESCE(metadata_json->>'traffic_type', '') = 'internal_test') AS is_internal_test
         FROM scoped
         WHERE lead_key IS NOT NULL
@@ -673,7 +673,7 @@ export default async function QuizDashboardPage({
           BOOL_OR(event_name = 'quiz_started') AS quiz_started,
           BOOL_OR(event_name = 'quiz_completed') AS quiz_completed,
           BOOL_OR(event_name = 'checkout_started') AS checkout_started,
-          BOOL_OR(event_name = 'payment_success') AS payment_success,
+          BOOL_OR(event_name = 'payment_success' AND COALESCE(revenue, 0) > 0) AS payment_success,
           BOOL_OR(COALESCE(metadata_json->>'traffic_type', '') = 'internal_test') AS is_internal_test,
           COUNT(DISTINCT CASE WHEN event_name = 'step_answered' AND step_id IS NOT NULL THEN step_id END)::int AS steps_answered
         FROM scoped
