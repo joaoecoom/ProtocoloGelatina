@@ -17,8 +17,6 @@ const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY 
 
 type CreateIntentResponse = {
   clientSecret?: string;
-  freeCheckout?: boolean;
-  couponApplied?: boolean;
   error?: string;
 };
 
@@ -131,9 +129,6 @@ export default function QuizEmbeddedCheckoutPage() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [isPreparing, setIsPreparing] = useState(false);
-  const [couponCode, setCouponCode] = useState("");
-  const [couponMessage, setCouponMessage] = useState<string | null>(null);
-  const [freeCheckoutReady, setFreeCheckoutReady] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<"1w" | "4w" | "12w">("1w");
   const [stepIndex, setStepIndex] = useState(0);
   const [hasPaidFront, setHasPaidFront] = useState(false);
@@ -159,7 +154,6 @@ export default function QuizEmbeddedCheckoutPage() {
   const prepareCheckout = useCallback(async () => {
     if (isPreparing) return;
     setCheckoutError(null);
-    setCouponMessage(null);
     setIsPreparing(true);
     try {
       const tracking = getTrackingContext();
@@ -169,7 +163,6 @@ export default function QuizEmbeddedCheckoutPage() {
         body: JSON.stringify({
           plan: "FRONT",
           offer: selectedOffer,
-          couponCode: couponCode.trim() || undefined,
           tracking: {
             session_id: tracking.sessionId,
             visitor_id: tracking.visitorId,
@@ -189,18 +182,8 @@ export default function QuizEmbeddedCheckoutPage() {
       });
       const data = (await response.json().catch(() => ({}))) as CreateIntentResponse;
       if (!response.ok || !data.clientSecret) {
-        if (response.ok && data.freeCheckout) {
-          setClientSecret(null);
-          setFreeCheckoutReady(true);
-          setCouponMessage("Cupão aplicado: checkout de teste com 100% de desconto.");
-          return;
-        }
         setCheckoutError(data.error ?? "Nao foi possivel preparar o pagamento.");
         return;
-      }
-      setFreeCheckoutReady(false);
-      if (data.couponApplied) {
-        setCouponMessage("Cupão aplicado com sucesso.");
       }
       setClientSecret(data.clientSecret);
       clientSecretOfferRef.current = selectedOffer;
@@ -209,7 +192,7 @@ export default function QuizEmbeddedCheckoutPage() {
     } finally {
       setIsPreparing(false);
     }
-  }, [couponCode, isPreparing, selectedOffer]);
+  }, [isPreparing, selectedOffer]);
 
   useEffect(() => {
     const cached = sessionStorage.getItem("quiz_checkout_client_secret");
@@ -226,10 +209,10 @@ export default function QuizEmbeddedCheckoutPage() {
 
   useEffect(() => {
     if (stepIndex !== 0 || isPreparing) return;
-    if ((!clientSecret && !freeCheckoutReady) || clientSecretOfferRef.current !== selectedOffer) {
+    if (!clientSecret || clientSecretOfferRef.current !== selectedOffer) {
       void prepareCheckout();
     }
-  }, [clientSecret, freeCheckoutReady, isPreparing, prepareCheckout, selectedOffer, stepIndex]);
+  }, [clientSecret, isPreparing, prepareCheckout, selectedOffer, stepIndex]);
 
   useEffect(() => {
     const fakeTimer = window.setInterval(() => {
@@ -426,10 +409,6 @@ export default function QuizEmbeddedCheckoutPage() {
       metadata_json: { checkout_stage: currentStep.id, checkout_step: stepIndex + 1 },
     });
   }, [currentStep.dashboardStepId, currentStep.id, isFrontStep, stepIndex]);
-
-  const testCouponEnabledRaw = (process.env.NEXT_PUBLIC_CHECKOUT_TEST_COUPON_ENABLED ?? "").trim().toLowerCase();
-  const testCouponEnabled =
-    testCouponEnabledRaw === "" || ["1", "true", "yes", "on"].includes(testCouponEnabledRaw);
 
   return (
     <main className="min-h-dvh bg-[linear-gradient(180deg,#fff_0%,#fff7fb_56%,#ffffff_100%)] px-4 pb-12 pt-6 sm:px-6">
@@ -1218,81 +1197,15 @@ export default function QuizEmbeddedCheckoutPage() {
 
               <div id="quiz-payment-form" className="mt-4">
                 {isFrontStep ? (
-                  !clientSecret && !freeCheckoutReady ? (
+                  !clientSecret ? (
                     <div className="space-y-3 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-                      {testCouponEnabled ? (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
-                          <p className="text-xs font-semibold text-amber-800">
-                            Cupão de testes (temporário): usa <code>cupomecoom</code> para 100% desconto.
-                          </p>
-                          <div className="mt-2 flex gap-2">
-                            <input
-                              value={couponCode}
-                              onChange={(e) => setCouponCode(e.target.value)}
-                              placeholder="Inserir cupão"
-                              className="h-10 flex-1 rounded-lg border border-amber-300 bg-white px-3 text-sm outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => void prepareCheckout()}
-                              className="rounded-lg bg-amber-500 px-3 text-sm font-semibold text-white"
-                            >
-                              Aplicar
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
                       <div className="h-11 w-full animate-pulse rounded-xl bg-white" />
                       <div className="h-12 w-full animate-pulse rounded-xl bg-white" />
                       <div className="h-12 w-full animate-pulse rounded-xl bg-white" />
                       <div className="h-12 w-full animate-pulse rounded-xl bg-emerald-100" />
                     </div>
-                  ) : freeCheckoutReady ? (
-                    <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                      <p className="text-sm font-semibold text-emerald-800">
-                        Cupão de teste aplicado. Este checkout fica com 100% de desconto.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setHasPaidFront(true);
-                          sessionStorage.setItem("quiz_front_paid", "1");
-                          handleDecision(true);
-                        }}
-                        className="h-12 w-full rounded-xl bg-emerald-600 px-4 text-sm font-black text-white"
-                      >
-                        Continuar com cupão (100% desconto)
-                      </button>
-                    </div>
                   ) : (
                     <div className="space-y-3">
-                      {testCouponEnabled ? (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
-                          <p className="text-xs font-semibold text-amber-800">
-                            Cupão de testes (temporário): usa <code>cupomecoom</code>.
-                          </p>
-                          <div className="mt-2 flex gap-2">
-                            <input
-                              value={couponCode}
-                              onChange={(e) => setCouponCode(e.target.value)}
-                              placeholder="Inserir cupão"
-                              className="h-10 flex-1 rounded-lg border border-amber-300 bg-white px-3 text-sm outline-none"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => void prepareCheckout()}
-                              className="rounded-lg bg-amber-500 px-3 text-sm font-semibold text-white"
-                            >
-                              Aplicar
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                      {couponMessage ? (
-                        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
-                          {couponMessage}
-                        </p>
-                      ) : null}
                       <Elements stripe={stripePromise} options={elementsOptions}>
                         <PaymentForm
                           onError={setCheckoutError}
