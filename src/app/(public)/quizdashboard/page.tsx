@@ -1235,7 +1235,6 @@ export default async function QuizDashboardPage({
         </section>
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <FunnelAiPanel payload={aiPayload} />
           <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm lg:col-span-2">
             <h2 className="text-lg font-semibold text-pg-ink">Funil principal (sessões)</h2>
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
@@ -1334,6 +1333,7 @@ export default async function QuizDashboardPage({
               </tbody>
             </table>
             </div>
+            <FunnelAiPanel payload={aiPayload} />
           </details>
         </section>
 
