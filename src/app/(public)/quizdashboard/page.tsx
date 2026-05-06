@@ -78,6 +78,11 @@ type StepDataHealthRow = {
   step_events: number;
   answered_events: number;
 };
+type OfferDecisionAggRow = {
+  checkout_stage: string;
+  accepted: number;
+  rejected: number;
+};
 type LeadProgressRow = {
   row: LeadFunnelRow;
   stepAnswers: Record<string, string>;
@@ -406,6 +411,7 @@ export default async function QuizDashboardPage({
     stageRows,
     funnelOptionsRows,
     sourceOptionsRows,
+    offerDecisionAggRows,
     leadFunnelRows,
     leadCountRows,
     stepDataHealthRows,
@@ -505,6 +511,90 @@ export default async function QuizDashboardPage({
       FROM events
       ORDER BY value ASC
     `,
+    prisma.$queryRaw<OfferDecisionAggRow[]>(Prisma.sql`
+      WITH scoped AS (
+        SELECT *,
+          COALESCE(lead_id, session_id, anonymous_id, visitor_id) AS lead_key
+        FROM events
+        ${whereSqlMetrics}
+      ),
+      latest_decisions AS (
+        SELECT DISTINCT ON (lead_key, COALESCE(metadata_json->>'checkout_stage', step_id, 'unknown'))
+          lead_key,
+          COALESCE(metadata_json->>'checkout_stage', step_id, 'unknown') AS checkout_stage,
+          COALESCE(
+            metadata_json->>'decision',
+            CASE
+              WHEN event_name LIKE '%_accepted' THEN 'accepted'
+              WHEN event_name LIKE '%_rejected' THEN 'rejected'
+              ELSE event_name
+            END
+          ) AS decision,
+          "timestamp"
+        FROM scoped
+        WHERE event_name IN ('upsell_accepted', 'upsell_rejected', 'downsell_accepted', 'downsell_rejected')
+        ORDER BY lead_key, COALESCE(metadata_json->>'checkout_stage', step_id, 'unknown'), "timestamp" DESC
+      ),
+      lead_rollup AS (
+        SELECT
+          lead_key,
+          BOOL_OR(event_name = 'payment_success' AND COALESCE(revenue, 0) > 0) AS payment_success
+        FROM scoped
+        WHERE lead_key IS NOT NULL
+        GROUP BY lead_key
+      ),
+      latest_offer_payments AS (
+        SELECT DISTINCT ON (lead_key, checkout_stage)
+          lead_key,
+          checkout_stage
+        FROM (
+          SELECT
+            lead_key,
+            CASE
+              WHEN step_id = 'checkout-upsell-1' THEN 'upsell1'
+              WHEN step_id = 'checkout-downsell-1-1' THEN 'upsell1_down1'
+              WHEN step_id = 'checkout-downsell-1-2' THEN 'upsell1_down2'
+              WHEN step_id = 'checkout-upsell-2' THEN 'upsell2'
+              WHEN step_id = 'checkout-downsell-2-1' THEN 'upsell2_down1'
+              WHEN step_id = 'checkout-downsell-2-2' THEN 'upsell2_down2'
+              ELSE NULL
+            END AS checkout_stage,
+            "timestamp"
+          FROM scoped
+          WHERE event_name = 'payment_success'
+            AND COALESCE(revenue, 0) > 0
+            AND step_id IN (
+              'checkout-upsell-1',
+              'checkout-downsell-1-1',
+              'checkout-downsell-1-2',
+              'checkout-upsell-2',
+              'checkout-downsell-2-1',
+              'checkout-downsell-2-2'
+            )
+        ) paid
+        WHERE checkout_stage IS NOT NULL
+        ORDER BY lead_key, checkout_stage, "timestamp" DESC
+      ),
+      offer_payment_map AS (
+        SELECT
+          lead_key,
+          jsonb_object_agg(checkout_stage, true) AS offer_paid_stages
+        FROM latest_offer_payments
+        GROUP BY lead_key
+      )
+      SELECT
+        d.checkout_stage,
+        COUNT(*) FILTER (
+          WHERE d.decision = 'accepted'
+            AND COALESCE((opm.offer_paid_stages ->> d.checkout_stage)::boolean, false) = true
+        )::int AS accepted,
+        COUNT(*) FILTER (WHERE d.decision = 'rejected')::int AS rejected
+      FROM latest_decisions d
+      JOIN lead_rollup lr ON lr.lead_key = d.lead_key
+      LEFT JOIN offer_payment_map opm ON opm.lead_key = d.lead_key
+      WHERE lr.payment_success = true
+      GROUP BY d.checkout_stage
+    `),
     prisma.$queryRaw<LeadFunnelRow[]>(Prisma.sql`
       WITH scoped AS (
         SELECT *,
@@ -787,20 +877,11 @@ export default async function QuizDashboardPage({
     highlightResetIdRaw && highlightResetIdRaw.length <= 40 ? highlightResetIdRaw : undefined;
 
   const offerDecisionRollup = new Map<string, { accepted: number; rejected: number }>();
-  for (const row of leadFunnelRows) {
-    if (row.is_internal_test) continue;
-    // Taxa de upsell só para leads que compraram o front.
-    if (!row.payment_success) continue;
-    const decisions = row.offer_decisions ?? {};
-    const paidStages = row.offer_paid_stages ?? {};
-    for (const [stage, decision] of Object.entries(decisions)) {
-      if (decision !== "accepted" && decision !== "rejected") continue;
-      const current = offerDecisionRollup.get(stage) ?? { accepted: 0, rejected: 0 };
-      // Aceitação só conta quando houve pagamento real para essa oferta.
-      if (decision === "accepted" && paidStages[stage]) current.accepted += 1;
-      if (decision === "rejected") current.rejected += 1;
-      offerDecisionRollup.set(stage, current);
-    }
+  for (const row of offerDecisionAggRows) {
+    offerDecisionRollup.set(row.checkout_stage, {
+      accepted: Number(row.accepted ?? 0),
+      rejected: Number(row.rejected ?? 0),
+    });
   }
 
   function decisionRate(stage: string) {
