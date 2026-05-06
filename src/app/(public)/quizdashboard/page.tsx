@@ -8,6 +8,8 @@ import { FunnelAiPanel } from "./funnel-ai-panel";
 import { MetricsPurgePanel, type MetricsPurgeLogDTO } from "./metrics-purge-panel";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 const ADMIN_EMAIL = "geral.joaoecoom@gmail.com";
 const DASHBOARD_ACCESS_COOKIE = "quizdashboard_access";
