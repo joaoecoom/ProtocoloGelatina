@@ -18,6 +18,8 @@ export async function POST(request: Request) {
   const tracking = (json as { tracking?: Record<string, string | undefined> } | null)?.tracking;
   const emailRaw = (json as { email?: string } | null)?.email ?? "";
   const email = emailRaw.trim().toLowerCase();
+  const couponCodeRaw = (json as { couponCode?: string } | null)?.couponCode ?? "";
+  const couponCode = couponCodeRaw.trim().toLowerCase();
   if (!parsed.success) return NextResponse.json({ error: "Plano invalido." }, { status: 400 });
   const hasValidEmail = email.includes("@");
   if (!process.env.STRIPE_SECRET_KEY?.trim()) {
@@ -30,6 +32,14 @@ export async function POST(request: Request) {
   const plan = parsed.data.plan;
   const offer = ((json as { offer?: string } | null)?.offer ?? "1w") as FrontOfferId;
   const frontOfferPricing = FRONT_OFFER_PRICING[offer] ?? FRONT_OFFER_PRICING["1w"];
+  const testCouponEnabledRaw = process.env.CHECKOUT_TEST_COUPON_ENABLED?.trim().toLowerCase();
+  const testCouponEnabled =
+    testCouponEnabledRaw == null || testCouponEnabledRaw === ""
+      ? true
+      : ["1", "true", "yes", "on"].includes(testCouponEnabledRaw);
+  const expectedTestCoupon = (process.env.CHECKOUT_TEST_COUPON_CODE ?? "cupomecoom").trim().toLowerCase();
+  const isTestCouponApplied =
+    testCouponEnabled && plan === "FRONT" && couponCode.length > 0 && couponCode === expectedTestCoupon;
   const planMeta = PLAN_CATALOG[plan];
   const hdrs = await headers();
   const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host");
@@ -68,6 +78,9 @@ export async function POST(request: Request) {
         })
       ).id;
 
+    const upfrontTrialEuro =
+      plan === "FRONT" ? (isTestCouponApplied ? 0 : frontOfferPricing.trialEuro) : planMeta.trialEuro;
+
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
       items: [{ price: monthlyPriceId, quantity: 1 }],
@@ -77,7 +90,7 @@ export async function POST(request: Request) {
           price_data: {
             currency: "eur",
             product: baseProductId,
-            unit_amount: Math.round((plan === "FRONT" ? frontOfferPricing.trialEuro : planMeta.trialEuro) * 100),
+            unit_amount: Math.round(upfrontTrialEuro * 100),
             tax_behavior: "exclusive",
           },
           quantity: 1,
@@ -123,6 +136,14 @@ export async function POST(request: Request) {
       }
     }
     if (!clientSecret) {
+      if (isTestCouponApplied) {
+        return NextResponse.json({
+          freeCheckout: true,
+          couponApplied: true,
+          subscriptionId: subscription.id,
+          customerId,
+        });
+      }
       return NextResponse.json({ error: "Nao foi possivel obter client secret." }, { status: 500 });
     }
 
@@ -130,6 +151,7 @@ export async function POST(request: Request) {
       clientSecret,
       subscriptionId: subscription.id,
       customerId,
+      couponApplied: isTestCouponApplied,
     });
   } catch (err) {
     console.error("[elements-guest-subscription] create", err);
