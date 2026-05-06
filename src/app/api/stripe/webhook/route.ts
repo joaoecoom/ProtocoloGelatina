@@ -455,7 +455,8 @@ export async function POST(request: Request) {
         const invoice = event.data.object;
         // Evita duplicar purchase no funil: pagamentos com PaymentIntent já
         // chegam no webhook payment_intent.succeeded.
-        if (invoice.payment_intent) {
+        const invoicePaymentIntent = (invoice as { payment_intent?: string | null }).payment_intent;
+        if (invoicePaymentIntent) {
           break;
         }
         const tracking = readTrackingFromMetadata(invoice.parent?.subscription_details?.metadata);

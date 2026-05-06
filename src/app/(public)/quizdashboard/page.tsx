@@ -1002,6 +1002,74 @@ export default async function QuizDashboardPage({
           </p>
         </header>
 
+        <section className="grid grid-cols-1 gap-4">
+          <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+            <h2 className="text-lg font-semibold text-pg-ink">Funil principal (sessões)</h2>
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
+              {funnelStages.map((stage, idx) => {
+                const prev = idx === 0 ? stage.sessions : funnelStages[idx - 1].sessions;
+                const rate = prev === 0 ? 0 : (stage.sessions / prev) * 100;
+                return (
+                  <div key={stage.key} className="rounded-xl border border-emerald-100 bg-gradient-to-b from-emerald-50/60 to-white p-3">
+                    <p className="text-xs text-pg-ink/60">{stage.label}</p>
+                    <p className="mt-1 text-2xl font-bold text-pg-ink">{fmt(stage.sessions)}</p>
+                    <p className="mt-1 text-xs text-pg-ink/70">Taxa etapa: {rate.toFixed(2)}%</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+            <p className="text-xs text-pg-ink/65">Visitas</p>
+            <p className="mt-1 text-2xl font-bold text-pg-ink">{fmt(Number(totals.visits ?? 0))}</p>
+          </div>
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+            <p className="text-xs text-pg-ink/65">Sessões</p>
+            <p className="mt-1 text-2xl font-bold text-pg-ink">{fmt(Number(totals.sessions ?? 0))}</p>
+          </div>
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+            <p className="text-xs text-pg-ink/65">Leads</p>
+            <p className="mt-1 text-2xl font-bold text-pg-ink">{fmt(Number(totals.leads ?? 0))}</p>
+          </div>
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+            <p className="text-xs text-pg-ink/65">Vendas</p>
+            <p className="mt-1 text-2xl font-bold text-pg-ink">{fmt(Number(totals.sales ?? 0))}</p>
+          </div>
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+            <p className="text-xs text-pg-ink/65">Receita</p>
+            <p className="mt-1 text-2xl font-bold text-pg-ink">{euro(revenue)}</p>
+          </div>
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+            <p className="text-xs text-pg-ink/65">Conversão</p>
+            <p className="mt-1 text-2xl font-bold text-pg-ink">{conversionRate.toFixed(2)}%</p>
+          </div>
+        </section>
+
+        <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+            <p className="text-xs text-pg-ink/65">Taxa de aceitação · Upsell 1</p>
+            <p className="mt-1 text-2xl font-bold text-pg-ink">{upsell1Rate.rate.toFixed(2)}%</p>
+            <p className="mt-1 text-xs text-pg-ink/70">
+              Aceites {fmt(upsell1Rate.accepted)} · Rejeições {fmt(upsell1Rate.rejected)}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+            <p className="text-xs text-pg-ink/65">Taxa de aceitação · Upsell 2</p>
+            <p className="mt-1 text-2xl font-bold text-pg-ink">{upsell2Rate.rate.toFixed(2)}%</p>
+            <p className="mt-1 text-xs text-pg-ink/70">
+              Aceites {fmt(upsell2Rate.accepted)} · Rejeições {fmt(upsell2Rate.rejected)}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+            <p className="text-xs text-pg-ink/65">Top ponto de rejeição</p>
+            <p className="mt-1 text-lg font-bold text-pg-ink">{getStepLabel(topRejection.stage)}</p>
+            <p className="mt-1 text-xs text-pg-ink/70">Rejeições: {fmt(topRejection.rejected)}</p>
+          </div>
+        </section>
+
         <MetricsPurgePanel
           initialLogs={purgeLogs}
           exportHref={`/api/events/export?${exportParams.toString()}`}
@@ -1319,73 +1387,7 @@ export default async function QuizDashboardPage({
           </details>
         </section>
 
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
-            <p className="text-xs text-pg-ink/65">Visitas</p>
-            <p className="mt-1 text-2xl font-bold text-pg-ink">{fmt(Number(totals.visits ?? 0))}</p>
-          </div>
-          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
-            <p className="text-xs text-pg-ink/65">Sessões</p>
-            <p className="mt-1 text-2xl font-bold text-pg-ink">{fmt(Number(totals.sessions ?? 0))}</p>
-          </div>
-          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
-            <p className="text-xs text-pg-ink/65">Leads</p>
-            <p className="mt-1 text-2xl font-bold text-pg-ink">{fmt(Number(totals.leads ?? 0))}</p>
-          </div>
-          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
-            <p className="text-xs text-pg-ink/65">Vendas</p>
-            <p className="mt-1 text-2xl font-bold text-pg-ink">{fmt(Number(totals.sales ?? 0))}</p>
-          </div>
-          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
-            <p className="text-xs text-pg-ink/65">Receita</p>
-            <p className="mt-1 text-2xl font-bold text-pg-ink">{euro(revenue)}</p>
-          </div>
-          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
-            <p className="text-xs text-pg-ink/65">Conversão</p>
-            <p className="mt-1 text-2xl font-bold text-pg-ink">{conversionRate.toFixed(2)}%</p>
-          </div>
-        </section>
-
-        <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
-            <p className="text-xs text-pg-ink/65">Taxa de aceitação · Upsell 1</p>
-            <p className="mt-1 text-2xl font-bold text-pg-ink">{upsell1Rate.rate.toFixed(2)}%</p>
-            <p className="mt-1 text-xs text-pg-ink/70">
-              Aceites {fmt(upsell1Rate.accepted)} · Rejeições {fmt(upsell1Rate.rejected)}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
-            <p className="text-xs text-pg-ink/65">Taxa de aceitação · Upsell 2</p>
-            <p className="mt-1 text-2xl font-bold text-pg-ink">{upsell2Rate.rate.toFixed(2)}%</p>
-            <p className="mt-1 text-xs text-pg-ink/70">
-              Aceites {fmt(upsell2Rate.accepted)} · Rejeições {fmt(upsell2Rate.rejected)}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
-            <p className="text-xs text-pg-ink/65">Top ponto de rejeição</p>
-            <p className="mt-1 text-lg font-bold text-pg-ink">{getStepLabel(topRejection.stage)}</p>
-            <p className="mt-1 text-xs text-pg-ink/70">Rejeições: {fmt(topRejection.rejected)}</p>
-          </div>
-        </section>
-
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm lg:col-span-2">
-            <h2 className="text-lg font-semibold text-pg-ink">Funil principal (sessões)</h2>
-            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
-              {funnelStages.map((stage, idx) => {
-                const prev = idx === 0 ? stage.sessions : funnelStages[idx - 1].sessions;
-                const rate = prev === 0 ? 0 : (stage.sessions / prev) * 100;
-                return (
-                  <div key={stage.key} className="rounded-xl border border-emerald-100 bg-gradient-to-b from-emerald-50/60 to-white p-3">
-                    <p className="text-xs text-pg-ink/60">{stage.label}</p>
-                    <p className="mt-1 text-2xl font-bold text-pg-ink">{fmt(stage.sessions)}</p>
-                    <p className="mt-1 text-xs text-pg-ink/70">Taxa etapa: {rate.toFixed(2)}%</p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
           <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
             <details>
               <summary className="cursor-pointer list-none rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-semibold text-pg-ink">
