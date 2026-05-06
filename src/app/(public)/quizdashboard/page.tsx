@@ -84,11 +84,15 @@ type LeadProgressRow = {
 };
 
 const RANGE_TO_DAYS: Record<string, number> = {
-  "24h": 1,
+  "3d": 3,
   "7d": 7,
   "30d": 30,
+  "24h": 1,
   "90d": 90,
 };
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200] as const;
+const DEFAULT_RANGE = "today";
+const DEFAULT_PER = "max";
 
 const QUIZ_STEP_COLUMNS = [
   "intro",
@@ -328,11 +332,18 @@ export default async function QuizDashboardPage({
     );
   }
 
-  const range = sp.get("range") ?? "30d";
+  const range = sp.get("range") ?? DEFAULT_RANGE;
   const month = sp.get("month");
   const q = (sp.get("q") ?? "").trim();
   const page = Math.max(1, Number(sp.get("page") ?? "1") || 1);
-  const perPage = 50;
+  const perParamRaw = (sp.get("per") ?? DEFAULT_PER).toLowerCase();
+  const perParam = Number(perParamRaw);
+  const perMode: "max" | "paged" =
+    perParamRaw === "max" ||
+    !PAGE_SIZE_OPTIONS.includes(perParam as (typeof PAGE_SIZE_OPTIONS)[number])
+      ? "max"
+      : "paged";
+  const perPage = perMode === "max" ? 1000000 : perParam;
   const offset = (page - 1) * perPage;
   const funnelFilter = sp.get("funnel") ?? "all";
   const sourceFilter = sp.get("source") ?? "all";
@@ -342,15 +353,24 @@ export default async function QuizDashboardPage({
   );
   const selectedStepColumns = QUIZ_STEP_COLUMNS.filter((col) => selectedColumnsSet.has(col));
   const hasNonDefaultFilters =
-    range !== "30d" ||
+    range !== DEFAULT_RANGE ||
     Boolean(month) ||
+    perMode !== DEFAULT_PER ||
     funnelFilter !== "all" ||
     sourceFilter !== "all" ||
     q.length > 0 ||
     selectedStepColumns.length !== QUIZ_STEP_COLUMNS.length;
 
   const whereParts: Prisma.Sql[] = [];
-  if (range === "month" && month && /^\d{4}-\d{2}$/.test(month)) {
+  if (range === "today") {
+    whereParts.push(
+      Prisma.sql`("timestamp" AT TIME ZONE 'Europe/Lisbon')::date = (NOW() AT TIME ZONE 'Europe/Lisbon')::date`,
+    );
+  } else if (range === "yesterday") {
+    whereParts.push(
+      Prisma.sql`("timestamp" AT TIME ZONE 'Europe/Lisbon')::date = ((NOW() AT TIME ZONE 'Europe/Lisbon')::date - INTERVAL '1 day')::date`,
+    );
+  } else if (range === "month" && month && /^\d{4}-\d{2}$/.test(month)) {
     whereParts.push(
       Prisma.sql`"timestamp" >= to_date(${`${month}-01`}, 'YYYY-MM-DD')
                  AND "timestamp" < (to_date(${`${month}-01`}, 'YYYY-MM-DD') + INTERVAL '1 month')`,
@@ -686,6 +706,7 @@ export default async function QuizDashboardPage({
   const baseParams = new URLSearchParams();
   if (range) baseParams.set("range", range);
   if (month) baseParams.set("month", month);
+  baseParams.set("per", perMode === "max" ? "max" : String(perPage));
   if (funnelFilter) baseParams.set("funnel", funnelFilter);
   if (sourceFilter) baseParams.set("source", sourceFilter);
   if (q) baseParams.set("q", q);
@@ -815,11 +836,11 @@ export default async function QuizDashboardPage({
               </a>
             ) : null}
           </div>
-          <details open={hasNonDefaultFilters}>
-            <summary className="cursor-pointer list-none text-lg font-semibold text-pg-ink">
-              Filtros e exportacao
+          <details>
+            <summary className="cursor-pointer list-none rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-semibold text-pg-ink">
+              Expandir filtros e exportação
             </summary>
-            <form className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
+            <form className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-6">
             <div>
               <label className="mb-1 block text-xs font-semibold text-pg-ink/70">Período</label>
               <select
@@ -827,9 +848,12 @@ export default async function QuizDashboardPage({
                 defaultValue={range}
                 className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
               >
+                <option value="today">Hoje</option>
+                <option value="yesterday">Ontem</option>
+                <option value="3d">Últimos 3 dias</option>
+                <option value="7d">Últimos 7 dias</option>
+                <option value="30d">Últimos 30 dias</option>
                 <option value="24h">24 horas</option>
-                <option value="7d">7 dias</option>
-                <option value="30d">30 dias</option>
                 <option value="90d">90 dias</option>
                 <option value="month">Mês específico</option>
                 <option value="all">Todo histórico</option>
@@ -870,6 +894,21 @@ export default async function QuizDashboardPage({
                     {value}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-pg-ink/70">Itens por página</label>
+              <select
+                name="per"
+                defaultValue={perMode === "max" ? "max" : String(perPage)}
+                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+                <option value="max">Máximo</option>
               </select>
             </div>
             <div>
@@ -925,17 +964,23 @@ export default async function QuizDashboardPage({
         </section>
 
         <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-          <div className="mb-4 border-b border-neutral-100 pb-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Vista leads</p>
-            <h2 className="text-lg font-semibold text-pg-ink">Métricas do funil (organização tipo construtor)</h2>
-            <p className="mt-1 text-xs text-pg-ink/65">
-              Agregados globais com os filtros actuais. Tráfego de teste interno excluído. Qualificados: leads que
-              responderam ≥ {minStepsQualificado} etapas (≥ metade de {QUIZ_STEP_COLUMNS.length} passos do quiz).
-            </p>
-          </div>
+          <details>
+            <summary className="cursor-pointer list-none rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-semibold text-pg-ink">
+              Expandir métricas da Vista Leads
+            </summary>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <div className="flex items-start gap-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
+            <div className="mt-4">
+              <div className="mb-4 border-b border-neutral-100 pb-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Vista leads</p>
+                <h2 className="text-lg font-semibold text-pg-ink">Métricas do funil (organização tipo construtor)</h2>
+                <p className="mt-1 text-xs text-pg-ink/65">
+                  Agregados globais com os filtros actuais. Tráfego de teste interno excluído. Qualificados: leads que
+                  responderam ≥ {minStepsQualificado} etapas (≥ metade de {QUIZ_STEP_COLUMNS.length} passos do quiz).
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="flex min-h-[140px] flex-col gap-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
               <span className="text-xl text-neutral-400" aria-hidden>
                 ◉
               </span>
@@ -943,9 +988,9 @@ export default async function QuizDashboardPage({
                 <p className="font-semibold text-pg-ink">Visitantes</p>
                 <p className="text-xs text-pg-ink/65">Sessões que viram página / entrada do funil.</p>
               </div>
-              <p className="text-2xl font-bold tabular-nums text-pg-ink">{fmt(leadVisitantes)}</p>
+              <p className="text-right text-2xl font-bold tabular-nums text-pg-ink">{fmt(leadVisitantes)}</p>
             </div>
-            <div className="flex items-start gap-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
+            <div className="flex min-h-[140px] flex-col gap-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
               <span className="text-xl text-neutral-400" aria-hidden>
                 ◎
               </span>
@@ -960,7 +1005,7 @@ export default async function QuizDashboardPage({
                 </p>
               </div>
             </div>
-            <div className="flex items-start gap-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
+            <div className="flex min-h-[140px] flex-col gap-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
               <span className="text-lg font-semibold text-neutral-400" aria-hidden>
                 ↗
               </span>
@@ -968,9 +1013,9 @@ export default async function QuizDashboardPage({
                 <p className="font-semibold text-pg-ink">Taxa de interação</p>
                 <p className="text-xs text-pg-ink/65">Visitantes que viraram lead (iniciaram quiz).</p>
               </div>
-              <p className="text-2xl font-bold tabular-nums text-pg-ink">{taxaInteracaoPct.toFixed(1)}%</p>
+              <p className="text-right text-2xl font-bold tabular-nums text-pg-ink">{taxaInteracaoPct.toFixed(1)}%</p>
             </div>
-            <div className="flex items-start gap-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
+            <div className="flex min-h-[140px] flex-col gap-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
               <span className="text-xl text-neutral-400" aria-hidden>
                 ✓
               </span>
@@ -983,7 +1028,7 @@ export default async function QuizDashboardPage({
                 <p className="mt-1 text-xs text-pg-ink/60">{pctQualificadosSobreAdquiridos.toFixed(1)}% dos adquiridos</p>
               </div>
             </div>
-            <div className="flex items-start gap-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
+            <div className="flex min-h-[140px] flex-col gap-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
               <span className="text-xl text-neutral-400" aria-hidden>
                 ☑
               </span>
@@ -991,7 +1036,7 @@ export default async function QuizDashboardPage({
                 <p className="font-semibold text-pg-ink">Fluxos completos (quiz)</p>
                 <p className="text-xs text-pg-ink/65">Concluíram o quiz (evento quiz_completed).</p>
               </div>
-              <p className="text-2xl font-bold tabular-nums text-pg-ink">{fmt(leadQuizCompleted)}</p>
+              <p className="text-right text-2xl font-bold tabular-nums text-pg-ink">{fmt(leadQuizCompleted)}</p>
             </div>
           </div>
 
@@ -1078,10 +1123,12 @@ export default async function QuizDashboardPage({
             </div>
           </div>
 
-          <p className="mt-4 rounded-lg border border-sky-100 bg-sky-50/60 px-3 py-2 text-xs text-pg-ink/80">
-            <span className="font-semibold text-pg-ink">Comportamento do lead no funil:</span> não há gravação de
-            ecrã. Usa a tabela «Progresso por lead» mais abaixo para ver passos, ofertas e checkout por identificador.
-          </p>
+              <p className="mt-4 rounded-lg border border-sky-100 bg-sky-50/60 px-3 py-2 text-xs text-pg-ink/80">
+                <span className="font-semibold text-pg-ink">Comportamento do lead no funil:</span> não há gravação de
+                ecrã. Usa a tabela «Progresso por lead» mais abaixo para ver passos, ofertas e checkout por identificador.
+              </p>
+            </div>
+          </details>
         </section>
 
         <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
@@ -1152,24 +1199,28 @@ export default async function QuizDashboardPage({
           </div>
 
           <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-            <h2 className="text-lg font-semibold text-pg-ink">Resumo diário (`event_daily_agg`)</h2>
-            <div className="mt-3 space-y-2">
-              {dailyAggRows.length === 0 ? (
-                <p className="text-sm text-pg-ink/70">Sem dados ainda.</p>
-              ) : (
-                dailyAggRows.map((row, idx) => (
-                  <div key={`${row.date}-${row.funnel_id}-${row.utm_source}-${idx}`} className="rounded-xl border border-neutral-100 bg-neutral-50/50 px-3 py-2 text-sm">
-                    <p className="font-semibold text-pg-ink">
-                      {row.date} · {row.funnel_id} · {row.utm_source}
-                    </p>
-                    <p className="text-pg-ink/75">
-                      eventos {fmt(Number(row.events ?? 0))} · sessões {fmt(Number(row.sessions ?? 0))} · leads{" "}
-                      {fmt(Number(row.leads ?? 0))} · receita {euro(Number(row.revenue ?? 0))}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
+            <details>
+              <summary className="cursor-pointer list-none rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-semibold text-pg-ink">
+                Expandir resumo diário (`event_daily_agg`)
+              </summary>
+              <div className="mt-3 space-y-2">
+                {dailyAggRows.length === 0 ? (
+                  <p className="text-sm text-pg-ink/70">Sem dados ainda.</p>
+                ) : (
+                  dailyAggRows.map((row, idx) => (
+                    <div key={`${row.date}-${row.funnel_id}-${row.utm_source}-${idx}`} className="rounded-xl border border-neutral-100 bg-neutral-50/50 px-3 py-2 text-sm">
+                      <p className="font-semibold text-pg-ink">
+                        {row.date} · {row.funnel_id} · {row.utm_source}
+                      </p>
+                      <p className="text-pg-ink/75">
+                        eventos {fmt(Number(row.events ?? 0))} · sessões {fmt(Number(row.sessions ?? 0))} · leads{" "}
+                        {fmt(Number(row.leads ?? 0))} · receita {euro(Number(row.revenue ?? 0))}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </details>
           </div>
 
           <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
@@ -1199,11 +1250,14 @@ export default async function QuizDashboardPage({
         </section>
 
         <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-          <h2 className="text-lg font-semibold text-pg-ink">Taxa de passagem por etapa (início ao fim)</h2>
-          <p className="mt-1 text-xs text-pg-ink/65">
-            Cálculo cumulativo: se 5 entraram e 4 chegaram à etapa seguinte, a passagem é 80%.
-          </p>
-          <div className="mt-4 overflow-x-auto">
+          <details>
+            <summary className="cursor-pointer list-none rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-semibold text-pg-ink">
+              Expandir taxa de passagem por etapa (início ao fim)
+            </summary>
+            <p className="mt-3 text-xs text-pg-ink/65">
+              Cálculo cumulativo: se 5 entraram e 4 chegaram à etapa seguinte, a passagem é 80%.
+            </p>
+            <div className="mt-3 overflow-x-auto">
             <table className="min-w-[980px] border-collapse text-sm">
               <thead>
                 <tr className="bg-emerald-50/70">
@@ -1224,23 +1278,78 @@ export default async function QuizDashboardPage({
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </details>
         </section>
 
         <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-          <h2 className="text-lg font-semibold text-pg-ink">Tabela por lead (todas as etapas do funil)</h2>
-          <p className="mt-1 text-xs text-pg-ink/65">
-            Mostra cada lead/sessão e o estado em cada etapa. Se faltar um evento intermédio, a tabela infere "passou*"
-            quando já existe evento numa etapa posterior.
-          </p>
-          {Number(stepDataHealth.step_events ?? 0) === 0 ? (
+          <details>
+            <summary className="cursor-pointer list-none rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-semibold text-pg-ink">
+              Expandir tabela por lead (todas as etapas do funil)
+            </summary>
+            <h2 className="mt-3 text-lg font-semibold text-pg-ink">Tabela por lead (todas as etapas do funil)</h2>
+            <p className="mt-1 text-xs text-pg-ink/65">
+              Mostra cada lead/sessão e o estado em cada etapa. Se faltar um evento intermédio, a tabela infere "passou*"
+              quando já existe evento numa etapa posterior.
+            </p>
+            <form className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <input type="hidden" name="funnel" value={funnelFilter} />
+            <input type="hidden" name="source" value={sourceFilter} />
+            <input type="hidden" name="q" value={q} />
+            <input type="hidden" name="month" value={month ?? ""} />
+            {selectedStepColumns.map((col) => (
+              <input key={`lead-table-col-${col}`} type="hidden" name="col" value={col} />
+            ))}
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-pg-ink/70">Período da tabela</label>
+              <select
+                name="range"
+                defaultValue={range}
+                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+              >
+                <option value="today">Hoje</option>
+                <option value="yesterday">Ontem</option>
+                <option value="3d">Últimos 3 dias</option>
+                <option value="7d">Últimos 7 dias</option>
+                <option value="30d">Últimos 30 dias</option>
+                <option value="24h">24 horas</option>
+                <option value="90d">90 dias</option>
+                <option value="month">Mês específico</option>
+                <option value="all">Todo histórico</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-pg-ink/70">Itens por página</label>
+              <select
+                name="per"
+                defaultValue={perMode === "max" ? "max" : String(perPage)}
+                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={`lead-table-size-${size}`} value={size}>
+                    {size}
+                  </option>
+                ))}
+                <option value="max">Máximo</option>
+              </select>
+            </div>
+            <div className="flex items-end">
+              <button
+                type="submit"
+                className="w-full rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-pg-ink shadow-sm transition hover:bg-neutral-50"
+              >
+                Aplicar nesta tabela
+              </button>
+            </div>
+            </form>
+            {Number(stepDataHealth.step_events ?? 0) === 0 ? (
             <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               Ainda não há eventos de etapa (`step_viewed`). Faz um teste real no `/quiz` (avança etapas e responde opções)
               para a tabela preencher as colunas.
             </p>
-          ) : null}
+            ) : null}
 
-          <div className="mt-4 overflow-x-auto">
+            <div className="mt-4 overflow-x-auto">
             <table className="min-w-[1900px] border-collapse text-sm">
               <thead>
                 <tr className="bg-emerald-50/70">
@@ -1316,8 +1425,8 @@ export default async function QuizDashboardPage({
                 )}
               </tbody>
             </table>
-          </div>
-          <div className="mt-3 flex items-center justify-between text-sm text-pg-ink/75">
+            </div>
+            <div className="mt-3 flex items-center justify-between text-sm text-pg-ink/75">
             <p>
               Leads: {fmt(totalLeads)} · Teste interno: {fmt(internalTestLeads)} · Página {page} de {fmt(totalPages)}
             </p>
@@ -1343,7 +1452,8 @@ export default async function QuizDashboardPage({
                 Seguinte
               </a>
             </div>
-          </div>
+            </div>
+          </details>
         </section>
       </div>
     </main>

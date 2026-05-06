@@ -132,6 +132,11 @@ export function MetricsPurgePanel(props: {
 
   return (
     <section className="rounded-2xl border border-amber-200/80 bg-amber-50/40 p-4 shadow-sm">
+      <details>
+        <summary className="cursor-pointer list-none rounded-lg border border-amber-200/80 bg-white/80 px-3 py-2 text-sm font-semibold text-pg-ink">
+          Expandir reset de métricas
+        </summary>
+        <div className="mt-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-pg-ink">Reset de métricas</h2>
@@ -272,6 +277,8 @@ export function MetricsPurgePanel(props: {
           {message.text}
         </p>
       ) : null}
+        </div>
+      </details>
 
       {open ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
