@@ -857,7 +857,10 @@ export default async function QuizDashboardPage({
   };
 
   return (
-    <main className="min-h-dvh bg-gradient-to-b from-emerald-50/50 via-white to-neutral-50 px-4 py-8 sm:px-6">
+    <main
+      id="quizdashboard-dark"
+      className="min-h-dvh bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-4 py-8 text-slate-100 sm:px-6"
+    >
       <div className="mx-auto w-full max-w-7xl space-y-6">
         <header>
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Tracking dashboard</p>
@@ -1511,6 +1514,89 @@ export default async function QuizDashboardPage({
           </details>
         </section>
       </div>
+      <style>{`
+        #quizdashboard-dark section,
+        #quizdashboard-dark details > summary,
+        #quizdashboard-dark .rounded-2xl,
+        #quizdashboard-dark .rounded-xl {
+          border-color: #334155 !important;
+        }
+        #quizdashboard-dark section {
+          background-color: #0f172a !important;
+        }
+        #quizdashboard-dark .bg-white,
+        #quizdashboard-dark .bg-white\\/95,
+        #quizdashboard-dark .bg-white\\/80 {
+          background-color: #111827 !important;
+          color: #e5e7eb !important;
+        }
+        #quizdashboard-dark .bg-neutral-50,
+        #quizdashboard-dark .bg-neutral-50\\/50,
+        #quizdashboard-dark .bg-neutral-50\\/60,
+        #quizdashboard-dark .bg-neutral-50\\/70,
+        #quizdashboard-dark .bg-neutral-50\\/80 {
+          background-color: #1f2937 !important;
+        }
+        #quizdashboard-dark .bg-emerald-50\\/20,
+        #quizdashboard-dark .bg-emerald-50\\/60,
+        #quizdashboard-dark .bg-emerald-50\\/70 {
+          background-color: #1f2937 !important;
+        }
+        #quizdashboard-dark .text-pg-ink,
+        #quizdashboard-dark .text-pg-ink\\/80,
+        #quizdashboard-dark .text-pg-ink\\/75,
+        #quizdashboard-dark .text-pg-ink\\/70,
+        #quizdashboard-dark .text-pg-ink\\/65,
+        #quizdashboard-dark .text-pg-ink\\/60 {
+          color: #e5e7eb !important;
+        }
+        #quizdashboard-dark thead,
+        #quizdashboard-dark th {
+          background-color: #1f2937 !important;
+          color: #f8fafc !important;
+        }
+        #quizdashboard-dark td,
+        #quizdashboard-dark th {
+          border-color: #334155 !important;
+        }
+        #quizdashboard-dark input,
+        #quizdashboard-dark select,
+        #quizdashboard-dark textarea {
+          background-color: #111827 !important;
+          color: #f8fafc !important;
+          border-color: #334155 !important;
+        }
+        #quizdashboard-dark a.rounded-lg,
+        #quizdashboard-dark button.rounded-lg,
+        #quizdashboard-dark button.rounded-xl,
+        #quizdashboard-dark a.rounded-xl {
+          border-color: #475569 !important;
+        }
+        #quizdashboard-dark pre {
+          background-color: #0b1220 !important;
+          color: #e2e8f0 !important;
+          border-color: #334155 !important;
+        }
+        #quizdashboard-dark .bg-gradient-to-b {
+          background-image: none !important;
+          background-color: #1e293b !important;
+        }
+        #quizdashboard-dark .odd\\:bg-white:nth-child(odd) {
+          background-color: #1f2937 !important;
+        }
+        #quizdashboard-dark .even\\:bg-emerald-50\\/20:nth-child(even) {
+          background-color: #374151 !important;
+        }
+        #quizdashboard-dark .bg-sky-50 {
+          background-color: #1e3a5f !important;
+        }
+        #quizdashboard-dark td {
+          color: #e5e7eb !important;
+        }
+        #quizdashboard-dark table tbody tr:hover td {
+          background-color: #475569 !important;
+        }
+      `}</style>
     </main>
   );
 }
