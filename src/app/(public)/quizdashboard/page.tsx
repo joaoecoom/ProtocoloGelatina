@@ -789,6 +789,8 @@ export default async function QuizDashboardPage({
   const offerDecisionRollup = new Map<string, { accepted: number; rejected: number }>();
   for (const row of leadFunnelRows) {
     if (row.is_internal_test) continue;
+    // Taxa de upsell só para leads que compraram o front.
+    if (!row.payment_success) continue;
     const decisions = row.offer_decisions ?? {};
     const paidStages = row.offer_paid_stages ?? {};
     for (const [stage, decision] of Object.entries(decisions)) {
