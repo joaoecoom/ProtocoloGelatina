@@ -16,7 +16,7 @@ export type MetricsPurgeLogDTO = {
 
 const SCOPE_LABEL: Record<string, string> = {
   quiz_gelatina: "Quiz gelatina",
-  all: "Todos os eventos",
+  all: "Funil inteiro",
 };
 
 function formatLisbon(iso: string) {
@@ -68,7 +68,6 @@ export function MetricsPurgePanel(props: {
   const canPurge = props.purgePostAllowed !== false;
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [dangerAll, setDangerAll] = useState(false);
   const [resetName, setResetName] = useState("");
   const [phrase, setPhrase] = useState("");
   const [loading, setLoading] = useState(false);
@@ -76,7 +75,7 @@ export function MetricsPurgePanel(props: {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const confirmExpected = dangerAll ? "ELIMINAR TUDO" : "ELIMINAR";
+  const confirmExpected = "ELIMINAR";
 
   const sortedLogs = useMemo(() => [...props.initialLogs].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [props.initialLogs]);
 
@@ -103,7 +102,7 @@ export function MetricsPurgePanel(props: {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          scope: dangerAll ? "all" : "quiz_gelatina",
+          scope: "all",
           confirmPhrase: phrase,
           label: resetName.trim() || undefined,
         }),
@@ -117,7 +116,6 @@ export function MetricsPurgePanel(props: {
       setOpen(false);
       setPhrase("");
       setResetName("");
-      setDangerAll(false);
       if (data.logId) {
         router.push(`/quizdashboard?reset=${encodeURIComponent(data.logId)}`);
       } else {
@@ -285,21 +283,8 @@ export function MetricsPurgePanel(props: {
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-5 shadow-xl">
             <h3 className="text-lg font-semibold text-pg-ink">Confirmar eliminação</h3>
             <p className="mt-2 text-sm text-pg-ink/75">
-              {dangerAll
-                ? "Isto apaga todos os eventos da base (todas as fontes e funis). Irreversível."
-                : "Isto apaga apenas eventos com funil «quiz_gelatina». Irreversível."}
+              Isto apaga as métricas de todo o funil no dashboard (todos os eventos da tabela de tracking). Irreversível.
             </p>
-            <label className="mt-4 flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={dangerAll}
-                onChange={(e) => {
-                  setDangerAll(e.target.checked);
-                  setPhrase("");
-                }}
-              />
-              <span>Modo perigoso: apagar todos os eventos (não só o quiz)</span>
-            </label>
             <label className="mt-4 block text-sm font-semibold text-pg-ink">
               Nome deste reset <span className="font-normal text-pg-ink/60">(opcional)</span>
               <input
@@ -329,7 +314,6 @@ export function MetricsPurgePanel(props: {
                   setOpen(false);
                   setPhrase("");
                   setResetName("");
-                  setDangerAll(false);
                 }}
                 className="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-pg-ink hover:bg-neutral-50"
               >

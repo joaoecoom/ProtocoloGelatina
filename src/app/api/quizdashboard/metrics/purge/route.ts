@@ -87,15 +87,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
   }
 
-  const scope = body.scope === "all" ? "all" : "quiz_gelatina";
+  const scope: Scope = "all";
   const phrase = String(body.confirmPhrase ?? "").trim();
   const label = sanitizeResetLabel(body.label);
 
-  if (scope === "quiz_gelatina" && phrase !== "ELIMINAR") {
-    return NextResponse.json({ error: 'Escreve exactamente "ELIMINAR" para confirmar.' }, { status: 400 });
-  }
-  if (scope === "all" && phrase !== "ELIMINAR TUDO") {
-    return NextResponse.json({ error: 'Escreve exactamente "ELIMINAR TUDO" para apagar todos os eventos.' }, { status: 400 });
+  if (phrase !== "ELIMINAR" && phrase !== "ELIMINAR TUDO") {
+    return NextResponse.json(
+      { error: 'Escreve exactamente "ELIMINAR" para confirmar o reset total do funil.' },
+      { status: 400 },
+    );
   }
 
   const where = eventWhereForScope(scope);
