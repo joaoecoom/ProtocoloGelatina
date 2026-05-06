@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { isMetricsPurgePostAllowed } from "@/lib/allow-metrics-purge";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { FunnelAiPanel } from "./funnel-ai-panel";
 import { MetricsPurgePanel, type MetricsPurgeLogDTO } from "./metrics-purge-panel";
 
 export const dynamic = "force-dynamic";
@@ -801,6 +802,59 @@ export default async function QuizDashboardPage({
     checkout_started: "Checkout",
     payment_success: "Compra",
   };
+  const stageLosses = funnelStages.map((stage, idx) => {
+    const prev = idx === 0 ? stage.sessions : funnelStages[idx - 1]!.sessions;
+    const retentionPct = prev === 0 ? 0 : (stage.sessions / prev) * 100;
+    const lossPct = prev === 0 ? 0 : Math.max(0, 100 - retentionPct);
+    return {
+      stageKey: stage.key,
+      stageLabel: funnelStagePtLabels[stage.key] ?? stage.label,
+      sessions: stage.sessions,
+      retentionPct: Number(retentionPct.toFixed(2)),
+      lossPct: Number(lossPct.toFixed(2)),
+    };
+  });
+  const topStepLosses = stepPassageRates
+    .map((s) => ({
+      stepId: s.stepId,
+      stepLabel: getStepLabelWithNumber(s.stepId),
+      reached: s.reached,
+      fromPreviousRate: Number(s.fromPreviousRate.toFixed(2)),
+      lossVsPrevious: Number(Math.max(0, 100 - s.fromPreviousRate).toFixed(2)),
+    }))
+    .filter((s, idx) => idx > 0)
+    .sort((a, b) => b.lossVsPrevious - a.lossVsPrevious)
+    .slice(0, 8);
+  const aiPayload = {
+    generatedAt: new Date().toISOString(),
+    filters: {
+      range,
+      month: month ?? null,
+      funnel: funnelFilter,
+      source: sourceFilter,
+      query: q || null,
+    },
+    totals: {
+      visits: Number(totals.visits ?? 0),
+      sessions: Number(totals.sessions ?? 0),
+      leads: Number(totals.leads ?? 0),
+      sales: Number(totals.sales ?? 0),
+      conversionRatePct: Number(conversionRate.toFixed(2)),
+    },
+    leadMetrics: {
+      visitantes: leadVisitantes,
+      leadsAdquiridos,
+      leadsQualificados: leadQualificados,
+      leadsQuizCompleted: leadQuizCompleted,
+      leadsCheckout: leadCheckout,
+      leadsPayment: leadPayment,
+      taxaInteracaoPct: Number(taxaInteracaoPct.toFixed(2)),
+      retencaoQuizCompletoPct: Number(retencaoQuizCompletoPct.toFixed(2)),
+      conversaoCheckoutPct: Number(conversaoCheckoutPct.toFixed(2)),
+    },
+    stageLosses,
+    topStepLosses,
+  };
 
   return (
     <main className="min-h-dvh bg-gradient-to-b from-emerald-50/50 via-white to-neutral-50 px-4 py-8 sm:px-6">
@@ -1181,6 +1235,7 @@ export default async function QuizDashboardPage({
         </section>
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <FunnelAiPanel payload={aiPayload} />
           <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm lg:col-span-2">
             <h2 className="text-lg font-semibold text-pg-ink">Funil principal (sessões)</h2>
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
