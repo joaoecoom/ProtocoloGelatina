@@ -60,6 +60,7 @@ type LeadFunnelRow = {
   is_internal_test: boolean;
   step_answers: Record<string, string> | null;
   offer_decisions: Record<string, string> | null;
+  offer_paid_stages: Record<string, boolean> | null;
   offer_decision_path: string | null;
 };
 type LeadCountRow = { total: number };
@@ -550,6 +551,46 @@ export default async function QuizDashboardPage({
         FROM latest_decisions
         GROUP BY lead_key
       ),
+      latest_offer_payments AS (
+        SELECT DISTINCT ON (lead_key, checkout_stage)
+          lead_key,
+          checkout_stage,
+          "timestamp"
+        FROM (
+          SELECT
+            lead_key,
+            CASE
+              WHEN step_id = 'checkout-upsell-1' THEN 'upsell1'
+              WHEN step_id = 'checkout-downsell-1-1' THEN 'upsell1_down1'
+              WHEN step_id = 'checkout-downsell-1-2' THEN 'upsell1_down2'
+              WHEN step_id = 'checkout-upsell-2' THEN 'upsell2'
+              WHEN step_id = 'checkout-downsell-2-1' THEN 'upsell2_down1'
+              WHEN step_id = 'checkout-downsell-2-2' THEN 'upsell2_down2'
+              ELSE NULL
+            END AS checkout_stage,
+            "timestamp"
+          FROM scoped
+          WHERE event_name = 'payment_success'
+            AND COALESCE(revenue, 0) > 0
+            AND step_id IN (
+              'checkout-upsell-1',
+              'checkout-downsell-1-1',
+              'checkout-downsell-1-2',
+              'checkout-upsell-2',
+              'checkout-downsell-2-1',
+              'checkout-downsell-2-2'
+            )
+        ) paid
+        WHERE checkout_stage IS NOT NULL
+        ORDER BY lead_key, checkout_stage, "timestamp" DESC
+      ),
+      offer_payment_map AS (
+        SELECT
+          lead_key,
+          jsonb_object_agg(checkout_stage, true) AS offer_paid_stages
+        FROM latest_offer_payments
+        GROUP BY lead_key
+      ),
       decision_path AS (
         SELECT
           lead_key,
@@ -586,10 +627,12 @@ export default async function QuizDashboardPage({
         lr.is_internal_test,
         sm.step_answers,
         dm.offer_decisions,
+        opm.offer_paid_stages,
         dp.offer_decision_path
       FROM lead_rollup lr
       LEFT JOIN step_map sm ON sm.lead_key = lr.lead_key
       LEFT JOIN decision_map dm ON dm.lead_key = lr.lead_key
+      LEFT JOIN offer_payment_map opm ON opm.lead_key = lr.lead_key
       LEFT JOIN decision_path dp ON dp.lead_key = lr.lead_key
       ORDER BY lr.first_seen DESC
       LIMIT ${perPage}
@@ -745,11 +788,14 @@ export default async function QuizDashboardPage({
 
   const offerDecisionRollup = new Map<string, { accepted: number; rejected: number }>();
   for (const row of leadFunnelRows) {
+    if (row.is_internal_test) continue;
     const decisions = row.offer_decisions ?? {};
+    const paidStages = row.offer_paid_stages ?? {};
     for (const [stage, decision] of Object.entries(decisions)) {
       if (decision !== "accepted" && decision !== "rejected") continue;
       const current = offerDecisionRollup.get(stage) ?? { accepted: 0, rejected: 0 };
-      if (decision === "accepted") current.accepted += 1;
+      // Aceitação só conta quando houve pagamento real para essa oferta.
+      if (decision === "accepted" && paidStages[stage]) current.accepted += 1;
       if (decision === "rejected") current.rejected += 1;
       offerDecisionRollup.set(stage, current);
     }
