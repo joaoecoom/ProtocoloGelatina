@@ -1,13 +1,45 @@
+"use client";
+
 import Script from "next/script";
+
+declare global {
+  interface Window {
+    pixelId?: string;
+    __pgUtmifyPixelInjected?: boolean;
+  }
+}
 
 /**
  * Meta Pixel (browser) + UTMify (UTMs + pixel deles).
  * CAPI é enviada a partir do servidor em `dispatchEventToIntegrations`.
+ *
+ * O pixel UTMify **só** é injetado depois de `latest.js` (UTMs) ter carregado;
+ * carregar em paralelo costumava provocar 400 em `tracking.utmify.com.br/.../events`
+ * e o `pixel.js` deles rebentava ao ler `_id` de uma resposta vazia.
  */
 export function MetaUtmifyScripts() {
   const isProduction = process.env.NODE_ENV === "production";
   const metaPixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID?.trim();
   const utmifyPixelId = process.env.NEXT_PUBLIC_UTMIFY_PIXEL_ID?.trim();
+  const disableUtmifyPixel = ["1", "true", "yes", "on"].includes(
+    (process.env.NEXT_PUBLIC_UTMIFY_DISABLE_PIXEL ?? "").trim().toLowerCase(),
+  );
+
+  function injectUtmifyPixelAfterUtms() {
+    if (!utmifyPixelId || disableUtmifyPixel) return;
+    if (typeof window === "undefined") return;
+    if (window.__pgUtmifyPixelInjected) return;
+    window.__pgUtmifyPixelInjected = true;
+    window.pixelId = utmifyPixelId;
+    try {
+      const s = document.createElement("script");
+      s.async = true;
+      s.src = "https://cdn.utmify.com.br/scripts/pixel/pixel.js";
+      document.head.appendChild(s);
+    } catch {
+      /* DOM inesperado: não bloquear a app */
+    }
+  }
 
   if (!isProduction) return null;
 
@@ -47,20 +79,8 @@ fbq('track', 'PageView');
         strategy="afterInteractive"
         data-utmify-prevent-xcod-sck
         data-utmify-prevent-subids
+        onLoad={injectUtmifyPixelAfterUtms}
       />
-
-      {utmifyPixelId ? (
-        <Script id="utmify-pixel" strategy="afterInteractive">
-          {`
-window.pixelId = "${utmifyPixelId}";
-var a = document.createElement("script");
-a.setAttribute("async", "");
-a.setAttribute("defer", "");
-a.setAttribute("src", "https://cdn.utmify.com.br/scripts/pixel/pixel.js");
-document.head.appendChild(a);
-          `}
-        </Script>
-      ) : null}
     </>
   );
 }

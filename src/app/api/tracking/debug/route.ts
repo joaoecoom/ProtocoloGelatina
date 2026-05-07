@@ -29,6 +29,7 @@ export async function GET() {
   const nextPublicMetaPixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID;
   const metaCapiAccessToken = process.env.META_CAPI_ACCESS_TOKEN;
   const nextPublicUtmifyPixelId = process.env.NEXT_PUBLIC_UTMIFY_PIXEL_ID;
+  const nextPublicUtmifyDisablePixel = process.env.NEXT_PUBLIC_UTMIFY_DISABLE_PIXEL;
   const trackingUtmifyWebhookUrl = process.env.TRACKING_UTMIFY_WEBHOOK_URL;
   const trackingUtmifyToken = process.env.TRACKING_UTMIFY_TOKEN;
 
@@ -44,6 +45,9 @@ export async function GET() {
     },
     utmify: {
       browserPixelEnabled: hasValue(nextPublicUtmifyPixelId),
+      browserPixelInjectDisabled: ["1", "true", "yes", "on"].includes(
+        (nextPublicUtmifyDisablePixel ?? "").trim().toLowerCase(),
+      ),
       webhookEnabled: hasValue(trackingUtmifyWebhookUrl),
       webhookTokenEnabled: hasValue(trackingUtmifyToken),
       pixelIdPrefix: nextPublicUtmifyPixelId?.slice(0, 6) ?? null,
