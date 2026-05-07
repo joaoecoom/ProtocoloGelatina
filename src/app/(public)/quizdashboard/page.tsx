@@ -1863,6 +1863,15 @@ export default async function QuizDashboardPage({
             Mensagem acima ajuda a diagnosticar (inclui falhas de SQL ou dados inválidos). Confirma também Vercel →
             Functions → logs deste pedido.
           </p>
+          {message.includes("revenue") && message.includes("does not exist") ? (
+            <p className="mt-3 rounded-lg border border-amber-500/40 bg-amber-950/40 px-3 py-2 text-xs text-amber-100/95">
+              Falta a coluna na tabela <code className="rounded bg-slate-900 px-1">events</code>. Para alinhar com o
+              schema Prisma, na raiz do projecto corre{" "}
+              <code className="rounded bg-slate-900 px-1">npm run db:ensure-events-columns</code> (usa{" "}
+              <code className="rounded bg-slate-900 px-1">DATABASE_URL</code> do{" "}
+              <code className="rounded bg-slate-900 px-1">.env.local</code>, como o Next).
+            </p>
+          ) : null}
         </div>
       </main>
     );

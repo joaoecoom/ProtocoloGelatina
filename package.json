@@ -11,6 +11,7 @@
     "lint": "eslint",
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
+    "db:ensure-events-columns": "tsx scripts/ensure-events-columns.ts",
     "db:studio": "prisma studio",
     "user:create": "tsx scripts/create-user.ts",
     "vapid:generate": "tsx scripts/generate-vapid.ts",
