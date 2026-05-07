@@ -14,20 +14,22 @@ export const fetchCache = "force-no-store";
 const ADMIN_EMAIL = "geral.joaoecoom@gmail.com";
 const DASHBOARD_ACCESS_COOKIE = "quizdashboard_access";
 
-/** Bases antigas / sem migração completa; DDL idempotente na mesma ligação que o Next usa. */
-let eventsTableColumnsEnsured = false;
+/** Cache por processo: algumas ligações não podem fazer ALTER; usamos metadata_json como fallback. */
+let eventsHasRevenueColumnCache: boolean | undefined;
 
-async function ensureEventsTableColumnsForMetricsQueries() {
-  if (eventsTableColumnsEnsured) return;
-  try {
-    await prisma.$executeRawUnsafe(
-      `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS revenue NUMERIC(14, 2)`,
-    );
-    await prisma.$executeRawUnsafe(`ALTER TABLE "events" ADD COLUMN IF NOT EXISTS currency TEXT`);
-    eventsTableColumnsEnsured = true;
-  } catch (err) {
-    console.warn("[quizdashboard] ALTER TABLE events (revenue/currency):", err);
-  }
+async function getEventsTableHasRevenueColumn(): Promise<boolean> {
+  if (eventsHasRevenueColumnCache !== undefined) return eventsHasRevenueColumnCache;
+  const rows = await prisma.$queryRaw<{ ok: boolean }[]>`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns c
+      WHERE c.table_schema = 'public'
+        AND c.table_name = 'events'
+        AND c.column_name = 'revenue'
+    ) AS ok
+  `;
+  eventsHasRevenueColumnCache = Boolean(rows[0]?.ok);
+  return eventsHasRevenueColumnCache;
 }
 
 type TotalsRow = {
@@ -444,7 +446,16 @@ export default async function QuizDashboardPage({
   const whereSqlMetrics = Prisma.sql`WHERE ${Prisma.join(wherePartsMetrics, " AND ")}`;
   const minStepsQualificado = Math.max(1, Math.ceil(QUIZ_STEP_COLUMNS.length * 0.5));
 
-  await ensureEventsTableColumnsForMetricsQueries();
+  const hasRevCol = await getEventsTableHasRevenueColumn();
+  const purchaseSuccessWithRevenue = hasRevCol
+    ? Prisma.sql`event_name = 'payment_success' AND COALESCE(revenue, 0) > 0`
+    : Prisma.sql`event_name = 'payment_success' AND COALESCE((metadata_json->>'revenue')::numeric, 0) > 0`;
+  const revenueSumAtom = hasRevCol
+    ? Prisma.sql`revenue`
+    : Prisma.sql`(metadata_json->>'revenue')::numeric`;
+  const scopeRevAmt = hasRevCol
+    ? Prisma.sql`COALESCE(revenue, 0)`
+    : Prisma.sql`COALESCE((metadata_json->>'revenue')::numeric, 0)`;
 
   const [
     totalsRows,
@@ -464,12 +475,12 @@ export default async function QuizDashboardPage({
         COUNT(*) FILTER (WHERE event_name IN ('page_view', 'landing_view'))::int AS visits,
         COUNT(DISTINCT COALESCE(session_id, anonymous_id, visitor_id))::int AS sessions,
         COUNT(DISTINCT COALESCE(lead_id, session_id, anonymous_id, visitor_id))::int AS leads,
-        COUNT(*) FILTER (WHERE event_name = 'payment_success' AND COALESCE(revenue, 0) > 0)::int AS sales,
-        COALESCE(SUM(revenue) FILTER (WHERE event_name = 'payment_success'), 0)::numeric(14,2) AS revenue,
+        COUNT(*) FILTER (WHERE ${purchaseSuccessWithRevenue})::int AS sales,
+        COALESCE(SUM(${revenueSumAtom}) FILTER (WHERE event_name = 'payment_success'), 0)::numeric(14,2) AS revenue,
         CASE
           WHEN COUNT(DISTINCT COALESCE(session_id, anonymous_id, visitor_id)) = 0 THEN 0
           ELSE ROUND(
-            (COUNT(*) FILTER (WHERE event_name = 'payment_success' AND COALESCE(revenue, 0) > 0)::numeric
+            (COUNT(*) FILTER (WHERE ${purchaseSuccessWithRevenue})::numeric
             / COUNT(DISTINCT COALESCE(session_id, anonymous_id, visitor_id))::numeric) * 100,
             2
           )
@@ -490,7 +501,7 @@ export default async function QuizDashboardPage({
         COUNT(*)::int AS events,
         COUNT(DISTINCT COALESCE(session_id, anonymous_id, visitor_id))::int AS sessions,
         COUNT(DISTINCT COALESCE(lead_id, session_id, anonymous_id, visitor_id))::int AS leads,
-        COALESCE(SUM(revenue), 0)::numeric(14,2) AS revenue
+        COALESCE(SUM(${revenueSumAtom}), 0)::numeric(14,2) AS revenue
       FROM scoped
       GROUP BY DATE("timestamp"), COALESCE(funnel_id, 'unknown'), COALESCE(utm_source, 'direct')
       ORDER BY DATE("timestamp") DESC
@@ -529,7 +540,10 @@ export default async function QuizDashboardPage({
     `),
     prisma.$queryRaw<StageRow[]>(Prisma.sql`
       WITH scoped AS (
-        SELECT COALESCE(session_id, anonymous_id, visitor_id) AS sid, event_name
+        SELECT
+          COALESCE(session_id, anonymous_id, visitor_id) AS sid,
+          event_name,
+          ${scopeRevAmt} AS rev_amt
         FROM events
         ${whereSqlMetrics}
       )
@@ -541,7 +555,7 @@ export default async function QuizDashboardPage({
       UNION ALL
       SELECT 'checkout_started' AS stage, COUNT(DISTINCT sid)::int AS sessions FROM scoped WHERE event_name = 'checkout_started'
       UNION ALL
-      SELECT 'payment_success' AS stage, COUNT(DISTINCT sid)::int AS sessions FROM scoped WHERE event_name = 'payment_success' AND COALESCE(revenue, 0) > 0
+      SELECT 'payment_success' AS stage, COUNT(DISTINCT sid)::int AS sessions FROM scoped WHERE event_name = 'payment_success' AND rev_amt > 0
     `),
     prisma.$queryRaw<OptionRow[]>`
       SELECT DISTINCT COALESCE(funnel_id, 'unknown') AS value
@@ -580,7 +594,7 @@ export default async function QuizDashboardPage({
       lead_rollup AS (
         SELECT
           lead_key,
-          BOOL_OR(event_name = 'payment_success' AND COALESCE(revenue, 0) > 0) AS payment_success
+          BOOL_OR(${purchaseSuccessWithRevenue}) AS payment_success
         FROM scoped
         WHERE lead_key IS NOT NULL
         GROUP BY lead_key
@@ -603,8 +617,7 @@ export default async function QuizDashboardPage({
             END AS checkout_stage,
             "timestamp"
           FROM scoped
-          WHERE event_name = 'payment_success'
-            AND COALESCE(revenue, 0) > 0
+          WHERE ${purchaseSuccessWithRevenue}
             AND step_id IN (
               'checkout-upsell-1',
               'checkout-downsell-1-1',
@@ -702,8 +715,7 @@ export default async function QuizDashboardPage({
             END AS checkout_stage,
             "timestamp"
           FROM scoped
-          WHERE event_name = 'payment_success'
-            AND COALESCE(revenue, 0) > 0
+          WHERE ${purchaseSuccessWithRevenue}
             AND step_id IN (
               'checkout-upsell-1',
               'checkout-downsell-1-1',
@@ -742,7 +754,7 @@ export default async function QuizDashboardPage({
           BOOL_OR(event_name = 'quiz_started') AS quiz_started,
           BOOL_OR(event_name = 'result_cta_clicked') AS result_cta_clicked,
           BOOL_OR(event_name = 'checkout_started') AS checkout_started,
-          BOOL_OR(event_name = 'payment_success' AND COALESCE(revenue, 0) > 0) AS payment_success,
+          BOOL_OR(${purchaseSuccessWithRevenue}) AS payment_success,
           BOOL_OR(COALESCE(metadata_json->>'traffic_type', '') = 'internal_test') AS is_internal_test
         FROM scoped
         WHERE lead_key IS NOT NULL
@@ -805,7 +817,7 @@ export default async function QuizDashboardPage({
           BOOL_OR(event_name = 'quiz_started') AS quiz_started,
           BOOL_OR(event_name = 'quiz_completed') AS quiz_completed,
           BOOL_OR(event_name = 'checkout_started') AS checkout_started,
-          BOOL_OR(event_name = 'payment_success' AND COALESCE(revenue, 0) > 0) AS payment_success,
+          BOOL_OR(${purchaseSuccessWithRevenue}) AS payment_success,
           BOOL_OR(COALESCE(metadata_json->>'traffic_type', '') = 'internal_test') AS is_internal_test,
           COUNT(DISTINCT CASE WHEN event_name = 'step_answered' AND step_id IS NOT NULL THEN step_id END)::int AS steps_answered
         FROM scoped
