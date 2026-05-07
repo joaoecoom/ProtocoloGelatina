@@ -14,6 +14,22 @@ export const fetchCache = "force-no-store";
 const ADMIN_EMAIL = "geral.joaoecoom@gmail.com";
 const DASHBOARD_ACCESS_COOKIE = "quizdashboard_access";
 
+/** Bases antigas / sem migração completa; DDL idempotente na mesma ligação que o Next usa. */
+let eventsTableColumnsEnsured = false;
+
+async function ensureEventsTableColumnsForMetricsQueries() {
+  if (eventsTableColumnsEnsured) return;
+  try {
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS revenue NUMERIC(14, 2)`,
+    );
+    await prisma.$executeRawUnsafe(`ALTER TABLE "events" ADD COLUMN IF NOT EXISTS currency TEXT`);
+    eventsTableColumnsEnsured = true;
+  } catch (err) {
+    console.warn("[quizdashboard] ALTER TABLE events (revenue/currency):", err);
+  }
+}
+
 type TotalsRow = {
   visits: number;
   sessions: number;
@@ -427,6 +443,8 @@ export default async function QuizDashboardPage({
   ];
   const whereSqlMetrics = Prisma.sql`WHERE ${Prisma.join(wherePartsMetrics, " AND ")}`;
   const minStepsQualificado = Math.max(1, Math.ceil(QUIZ_STEP_COLUMNS.length * 0.5));
+
+  await ensureEventsTableColumnsForMetricsQueries();
 
   const [
     totalsRows,
