@@ -199,22 +199,43 @@ function getStepLabelWithNumber(stepId: string) {
 }
 
 function fmt(value: number) {
+  if (!Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("pt-PT").format(value);
 }
 
 function euro(value: number) {
+  if (!Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(value);
 }
 
-function formatLisbonDateTime(value: string) {
-  return new Intl.DateTimeFormat("pt-PT", {
-    timeZone: "Europe/Lisbon",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+/** Respostas vindas do JSON podem não ser string — React rebenta se renderizarmos um objeto. */
+function renderStepCellAnswer(raw: unknown): string | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "number" || typeof raw === "boolean") return String(raw);
+  try {
+    return JSON.stringify(raw);
+  } catch {
+    return "[valor]";
+  }
+}
+
+function formatLisbonDateTime(value: string | null | undefined) {
+  if (value == null || value === "") return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  try {
+    return new Intl.DateTimeFormat("pt-PT", {
+      timeZone: "Europe/Lisbon",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(d);
+  } catch {
+    return String(value);
+  }
 }
 
 function statusBadge(active: boolean, activeLabel: string) {
@@ -341,6 +362,7 @@ export default async function QuizDashboardPage({
     );
   }
 
+  try {
   const range = sp.get("range") ?? DEFAULT_RANGE;
   const month = sp.get("month");
   const q = (sp.get("q") ?? "").trim();
@@ -850,6 +872,44 @@ export default async function QuizDashboardPage({
   const exportParams = new URLSearchParams(baseParams);
   exportParams.set("format", "csv");
 
+  function periodHref(newRange: string, newMonth?: string | null) {
+    const p = new URLSearchParams();
+    p.set("range", newRange);
+    if (newRange === "month" && newMonth && /^\d{4}-\d{2}$/.test(newMonth)) {
+      p.set("month", newMonth);
+    }
+    p.set("per", perMode === "max" ? "max" : String(perPage));
+    if (funnelFilter !== "all") p.set("funnel", funnelFilter);
+    if (sourceFilter !== "all") p.set("source", sourceFilter);
+    if (q) p.set("q", q);
+    for (const col of selectedStepColumns) p.append("col", col);
+    return `/quizdashboard?${p.toString()}`;
+  }
+
+  const monthNavOptions: { ym: string; label: string }[] = [];
+  {
+    const anchor = new Date();
+    for (let i = 0; i < 24; i++) {
+      const d = new Date(anchor.getFullYear(), anchor.getMonth() - i, 1);
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label = new Intl.DateTimeFormat("pt-PT", {
+        month: "short",
+        year: "numeric",
+        timeZone: "Europe/Lisbon",
+      }).format(d);
+      monthNavOptions.push({ ym, label });
+    }
+  }
+
+  const periodQuick = [
+    { id: "today", label: "Hoje" },
+    { id: "yesterday", label: "Ontem" },
+    { id: "3d", label: "Últimos 3 dias" },
+    { id: "7d", label: "Últimos 7 dias" },
+    { id: "30d", label: "Últimos 30 dias" },
+    { id: "all", label: "Máximo" },
+  ] as const;
+
   let purgeLogs: MetricsPurgeLogDTO[] = [];
   let purgeLogsUnavailable = false;
   try {
@@ -987,6 +1047,13 @@ export default async function QuizDashboardPage({
     topStepLosses,
   };
 
+  let aiPayloadForClient = aiPayload;
+  try {
+    aiPayloadForClient = JSON.parse(JSON.stringify(aiPayload)) as typeof aiPayload;
+  } catch {
+    /* manter original se round-trip falhar (referências circulares) */
+  }
+
   return (
     <main
       id="quizdashboard-dark"
@@ -1001,6 +1068,49 @@ export default async function QuizDashboardPage({
             Tráfego de teste interno está excluído dos cards/métricas. Na tabela por lead, aparece em azul claro.
           </p>
         </header>
+
+        <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Período</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {periodQuick.map(({ id, label }) => {
+              const active = range === id;
+              return (
+                <a
+                  key={id}
+                  href={periodHref(id)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+                    active
+                      ? "border border-emerald-500 bg-emerald-500/20 text-emerald-100"
+                      : "border border-neutral-300 text-pg-ink hover:bg-neutral-50"
+                  }`}
+                >
+                  {label}
+                </a>
+              );
+            })}
+          </div>
+          <div className="mt-4 border-t border-neutral-200 pt-3">
+            <p className="text-xs font-semibold text-pg-ink/70">Por mês (últimos 24)</p>
+            <div className="mt-2 flex max-w-full flex-wrap gap-1.5">
+              {monthNavOptions.map(({ ym, label: monthLabel }) => {
+                const active = range === "month" && month === ym;
+                return (
+                  <a
+                    key={ym}
+                    href={periodHref("month", ym)}
+                    className={`whitespace-nowrap rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                      active
+                        ? "border border-emerald-500 bg-emerald-500/20 text-emerald-100"
+                        : "border border-neutral-300 text-pg-ink hover:bg-neutral-50"
+                    }`}
+                  >
+                    {monthLabel}
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        </section>
 
         <section className="grid grid-cols-1 gap-4">
           <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
@@ -1469,7 +1579,7 @@ export default async function QuizDashboardPage({
               </tbody>
             </table>
             </div>
-            <FunnelAiPanel payload={aiPayload} />
+            <FunnelAiPanel payload={aiPayloadForClient} />
           </details>
         </section>
 
@@ -1596,7 +1706,8 @@ export default async function QuizDashboardPage({
                                 : "border border-neutral-200 px-2 py-2 text-pg-ink/80"
                             }
                           >
-                            {stepAnswers[stepId] ?? (getStepOrder(stepId) <= maxReachedOrder ? "passou*" : "-")}
+                            {renderStepCellAnswer(stepAnswers[stepId]) ??
+                              (getStepOrder(stepId) <= maxReachedOrder ? "passou*" : "-")}
                           </td>
                         ))}
                         <td className="border border-neutral-200 px-2 py-2">{statusBadge(row.result_cta_clicked, "clicked")}</td>
@@ -1732,4 +1843,28 @@ export default async function QuizDashboardPage({
       `}</style>
     </main>
   );
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    const digest =
+      typeof err === "object" &&
+      err !== null &&
+      "digest" in err &&
+      typeof (err as { digest?: unknown }).digest === "string"
+        ? (err as { digest: string }).digest
+        : undefined;
+    console.error("[quizdashboard]", err);
+    return (
+      <main className="min-h-dvh bg-slate-950 px-4 py-8 text-slate-100">
+        <div className="mx-auto max-w-2xl rounded-2xl border border-rose-500/40 bg-slate-900 p-6">
+          <h1 className="text-xl font-bold text-rose-100">Erro ao carregar o dashboard</h1>
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-300">{message}</p>
+          {digest ? <p className="mt-2 font-mono text-xs text-slate-400">digest: {digest}</p> : null}
+          <p className="mt-4 text-xs text-slate-500">
+            Mensagem acima ajuda a diagnosticar (inclui falhas de SQL ou dados inválidos). Confirma também Vercel →
+            Functions → logs deste pedido.
+          </p>
+        </div>
+      </main>
+    );
+  }
 }

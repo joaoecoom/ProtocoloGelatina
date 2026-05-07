@@ -20,14 +20,20 @@ const SCOPE_LABEL: Record<string, string> = {
 };
 
 function formatLisbon(iso: string) {
-  return new Intl.DateTimeFormat("pt-PT", {
-    timeZone: "Europe/Lisbon",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(iso));
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso || "—";
+  try {
+    return new Intl.DateTimeFormat("pt-PT", {
+      timeZone: "Europe/Lisbon",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(d);
+  } catch {
+    return iso || "—";
+  }
 }
 
 /** Resumo legível para snapshots v1 (cards alinhados ao dashboard). */
